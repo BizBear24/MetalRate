@@ -1,0 +1,300 @@
+@import 'tailwindcss';
+
+@custom-variant light (&:where([data-theme='light'], [data-theme='light'] *));
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #080806;
+  --bg-elev: #10100d;
+  --surface: #14130f;
+  --surface-2: #1a1914;
+  --line: rgb(226 204 150 / 0.09);
+  --line-strong: rgb(226 204 150 / 0.18);
+  --text: #f3eee3;
+  --muted: #8b867a;
+  --faint: #5a574f;
+  --champagne: #d8c6a0;
+  --gold: #d2b06a;
+  --gold-hi: #f0dca8;
+  --gold-lo: #9c7a3c;
+  --on-gold: #17120a;
+  --live: #7ccf9b;
+  --warn: #e0b35c;
+  --danger: #e57d6c;
+  --glow: rgb(210 176 106 / 0.16);
+  --scrim: rgb(4 4 3 / 0.72);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f6f2e9;
+  --bg-elev: #fbf8f2;
+  --surface: #fffdf9;
+  --surface-2: #f1ece1;
+  --line: rgb(70 52 18 / 0.1);
+  --line-strong: rgb(70 52 18 / 0.2);
+  --text: #16130d;
+  --muted: #736c5e;
+  --faint: #a59d8c;
+  --champagne: #86692f;
+  --gold: #a47f30;
+  --gold-hi: #c9a55a;
+  --gold-lo: #7d5f22;
+  --on-gold: #fffaf0;
+  --live: #1f8a4c;
+  --warn: #a8700f;
+  --danger: #b8432f;
+  --glow: rgb(164 127 48 / 0.14);
+  --scrim: rgb(30 24 12 / 0.45);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-elev: var(--bg-elev);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-champagne: var(--champagne);
+  --color-gold: var(--gold);
+  --color-gold-hi: var(--gold-hi);
+  --color-gold-lo: var(--gold-lo);
+  --color-on-gold: var(--on-gold);
+  --color-live: var(--live);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --font-sans: 'Manrope', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Cormorant Garamond', ui-serif, Georgia, serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-feature-settings: 'tnum' 1, 'cv11' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* Very faint vignette gives the black depth without a visible gradient. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(120% 60% at 50% -10%, var(--glow), transparent 60%);
+    z-index: 0;
+  }
+  button,
+  a,
+  input,
+  select {
+    -webkit-tap-highlight-color: transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+    border-radius: 10px;
+  }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+  ::selection {
+    background: rgb(210 176 106 / 0.35);
+  }
+}
+
+@layer components {
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .hairline {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--line-strong) 20%, var(--line-strong) 80%, transparent);
+  }
+
+  /* Metallic gold surface — used only for the primary action. */
+  .btn-gold {
+    color: var(--on-gold);
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0) 48%),
+      linear-gradient(100deg, var(--gold-lo), var(--gold) 38%, var(--gold-hi) 62%, var(--gold) 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.35),
+      inset 0 -1px 0 rgb(0 0 0 / 0.18),
+      0 10px 30px -12px var(--glow),
+      0 0 0 1px rgb(0 0 0 / 0.2);
+  }
+  .btn-gold:hover {
+    filter: brightness(1.05);
+  }
+
+  .gold-text {
+    background: linear-gradient(100deg, var(--gold-hi), var(--gold) 45%, var(--champagne));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  [data-theme='light'] .gold-text {
+    background: linear-gradient(100deg, var(--gold-lo), var(--gold) 60%, var(--gold-lo));
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  .glass {
+    background: color-mix(in oklab, var(--bg-elev) 78%, transparent);
+    backdrop-filter: blur(18px) saturate(1.3);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  }
+
+  .panel {
+    background: linear-gradient(180deg, color-mix(in oklab, var(--surface) 100%, transparent), var(--bg-elev));
+    border: 1px solid var(--line);
+    border-radius: 24px;
+  }
+
+  .field {
+    width: 100%;
+    height: 3.25rem;
+    padding: 0 1rem;
+    border-radius: 14px;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    color: var(--text);
+    font-size: 1rem;
+    transition: border-color 150ms, box-shadow 150ms;
+  }
+  .field::placeholder {
+    color: var(--faint);
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 4px var(--glow);
+  }
+  .field[aria-invalid='true'],
+  .field[aria-invalid='true']:focus {
+    border-color: var(--danger);
+  }
+  .field[aria-invalid='true']:focus {
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--danger) 18%, transparent);
+  }
+
+  .pressable {
+    transition: transform 120ms ease, filter 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms;
+  }
+  .pressable:active:not(:disabled) {
+    transform: scale(0.975);
+  }
+  .pressable:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .num {
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────── */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes scan-line {
+  0% { top: 6%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 94%; opacity: 0; }
+}
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 55%, transparent); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+}
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+@keyframes price-flash {
+  0% { color: var(--gold-hi); text-shadow: 0 0 18px var(--glow); }
+  100% { color: inherit; text-shadow: none; }
+}
+@keyframes found-ring {
+  from { transform: scale(0.6); opacity: 0; }
+  60% { opacity: 1; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.animate-page { animation: page-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.animate-fade { animation: fade-in 220ms ease both; }
+.animate-sheet { animation: sheet-in 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.animate-scan { animation: scan-line 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.animate-live { animation: pulse-dot 2s ease-out infinite; }
+.animate-flash { animation: price-flash 1.2s ease-out; }
+.animate-found { animation: found-ring 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.animate-toast { animation: toast-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.animate-draw { stroke-dasharray: 40; stroke-dashoffset: 40; animation: draw 420ms 160ms ease-out forwards; }
+
+.skeleton {
+  color: transparent !important;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--line-strong) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
