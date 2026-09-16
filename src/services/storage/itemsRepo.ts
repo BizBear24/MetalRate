@@ -106,6 +106,41 @@ export const itemsRepo = {
     return JSON.stringify({ app: 'GoldCalc', version: 1, exportedAt: new Date().toISOString(), items: load() }, null, 2);
   },
 
+  /** How many of these barcodes already exist (for import previews). */
+  countExisting(barcodes: string[]): number {
+    const existing = new Set(load().map((i) => i.barcode));
+    return barcodes.filter((b) => existing.has(normalizeBarcode(b))).length;
+  },
+
+  /** Bulk add-or-update by barcode (spreadsheet import). Drafts must already be validated. */
+  upsertMany(drafts: ItemDraft[]): { added: number; updated: number } {
+    const byBarcode = new Map(load().map((i) => [i.barcode, i]));
+    const now = new Date().toISOString();
+    const freshIds = new Set<string>();
+    let updated = 0;
+    for (const d of drafts) {
+      const barcode = normalizeBarcode(d.barcode);
+      const prev = byBarcode.get(barcode);
+      const id = prev?.id ?? newId();
+      if (!prev) freshIds.add(id);
+      else updated++;
+      byBarcode.set(barcode, {
+        id,
+        barcode,
+        name: d.name?.trim() || undefined,
+        metal: d.metal,
+        purity: d.purity,
+        weightGrams: Math.round(d.weightGrams * 1000) / 1000,
+        createdAt: prev?.createdAt ?? now,
+        updatedAt: now,
+      });
+    }
+    // Newly added rows first, like manual adds.
+    const all = [...byBarcode.values()];
+    commit([...all.filter((i) => freshIds.has(i.id)), ...all.filter((i) => !freshIds.has(i.id))]);
+    return { added: freshIds.size, updated };
+  },
+
   /** Merges by barcode (imported rows win). Returns counts. */
   import(json: string): { added: number; updated: number; skipped: number } {
     let parsed: unknown;

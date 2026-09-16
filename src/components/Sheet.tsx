@@ -37,7 +37,7 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
-        className="animate-sheet relative w-full max-w-md rounded-t-[28px] border border-line-strong bg-elev px-6 pt-7 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-2xl shadow-black/40 sm:m-4 sm:rounded-[28px] sm:pb-6"
+        className="animate-sheet relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-[28px] border border-line-strong bg-elev px-6 pt-7 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-2xl shadow-black/40 sm:m-4 sm:rounded-[28px] sm:pb-6"
       >
         <div className="absolute top-2.5 left-1/2 h-1 w-9 -translate-x-1/2 rounded-full bg-line-strong sm:hidden" />
         {children}

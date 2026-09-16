@@ -79,9 +79,31 @@ Copy `.env.example` to `.env`. All of them are optional.
 
 The current provider needs no key. If you switch to one that does, set `VITE_PRICE_API_URL=/api/price` and set up the same proxy on your host, for example as a serverless function. Never put a secret in a `VITE_` variable.
 
+## Importing inventory from Excel
+
+You can load your whole stock list at once instead of adding items one by one.
+
+1. Go to **Items → Import** (or **Settings → Data → Download Excel template**) and download `GoldCalc-inventory-template.xlsx`.
+2. Fill in the **Inventory** sheet, one row per item:
+
+   | Barcode | Metal | Purity | Net Weight (g) | Item Name |
+   |---|---|---|---|---|
+   | 000451 | Gold | 22K | 12.35 | Gold Bangle |
+   | 000453 | Silver | 925 | 48.10 | Anklet Pair |
+
+3. Upload the file (`.xlsx` or `.csv`). A preview shows how many items are new, how many will be updated and which rows will be skipped, with the row number and reason for each. Nothing is saved until you press **Import**.
+
+How the import reads your sheet:
+- If a barcode already exists, that item is updated with the sheet's values. Blank rows are ignored. If a barcode appears twice in the file, the later row is used.
+- Purity can be written in common shop notations: `22`, `22KT`, `22 ct`, `916`, `91.6`, `750`, `92.5`, `Sterling`. If the Metal cell is blank, it is worked out from the purity, except for `999`, which could be gold or silver.
+- Your own sheets work too, as long as they have a header row. Common column names are recognised (`Tag No`, `SKU`, `Karat`, `Net Wt`, `Description`…), and **Net Wt** is used in preference to **Gross Wt**. Title rows above the header are fine.
+- The template's Barcode column is formatted as text, so leading zeros (`000451`) are kept. The Instructions sheet and its example rows are never imported.
+- **Settings → Data → Export items to Excel** writes your current items in the same layout, so you can edit them in Excel and upload the file again.
+- Old `.xls` files aren't supported. Save them as `.xlsx` first.
+
 ## Data and offline use
 
-- Items and settings are stored in `localStorage` under the `goldcalc:` prefix. You can export and import items as JSON from Settings.
+- Items and settings are stored in `localStorage` under the `goldcalc:` prefix. Settings → Data also has a full JSON backup and restore.
 - **Demo items** (`890000000001`–`890000000003`) are marked "Demo". Remove them in **Settings → Data**, or set `VITE_SEED_DEMO_DATA=false` before deploying.
 - In production builds, a service worker (`public/sw.js`) caches the app shell, the bundles and the fonts, so the app opens without internet. Saved-item lookups work offline, and prices fall back to the last saved values, labelled OFFLINE.
 

@@ -9,12 +9,14 @@ import { Page, PageHeader } from '@/components/Layout';
 import { Button, IconButton } from '@/components/Button';
 import { ConfirmSheet } from '@/components/Sheet';
 import { useToast } from '@/components/Toast';
-import { EditIcon, PlusIcon, SearchIcon, TrashIcon } from '@/components/Icons';
+import { EditIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon } from '@/components/Icons';
+import { InventoryImport } from '@/features/items/InventoryImport';
 
 export function ItemsPage() {
   const items = useItems();
   const [q, setQ] = useState('');
   const [pendingDelete, setPendingDelete] = useState<Item | null>(null);
+  const [importing, setImporting] = useState(false);
   const toast = useToast();
 
   const filtered = useMemo(() => {
@@ -35,10 +37,17 @@ export function ItemsPage() {
         eyebrow={`${items.length} saved`}
         title="Your Items"
         action={
-          <div className="hidden sm:block">
-            <Button variant="gold" size="md" icon={<PlusIcon size={16} />} onClick={() => navigate('/items/new')}>
-              Add Item
+          <div className="flex gap-2">
+            <Button size="md" icon={<UploadIcon size={16} />} onClick={() => setImporting(true)}>
+              <span>
+                Import<span className="hidden sm:inline"> Excel</span>
+              </span>
             </Button>
+            <div className="hidden sm:block">
+              <Button variant="gold" size="md" icon={<PlusIcon size={16} />} onClick={() => navigate('/items/new')}>
+                Add Item
+              </Button>
+            </div>
           </div>
         }
       />
@@ -56,7 +65,7 @@ export function ItemsPage() {
       </div>
 
       {items.length === 0 ? (
-        <Empty />
+        <Empty onImport={() => setImporting(true)} />
       ) : filtered.length === 0 ? (
         <p className="mt-16 text-center text-sm text-muted">No items match “{q}”.</p>
       ) : (
@@ -110,6 +119,8 @@ export function ItemsPage() {
         <PlusIcon size={20} /> Add Item
       </button>
 
+      <InventoryImport open={importing} onClose={() => setImporting(false)} />
+
       <ConfirmSheet
         open={!!pendingDelete}
         title="Delete item?"
@@ -139,7 +150,7 @@ function MetalDot({ metal }: { metal: Item['metal'] }) {
   );
 }
 
-function Empty() {
+function Empty({ onImport }: { onImport: () => void }) {
   return (
     <div className="mt-20 flex flex-col items-center text-center">
       <div className="flex size-16 items-center justify-center rounded-full border border-line-strong text-champagne">
@@ -147,6 +158,9 @@ function Empty() {
       </div>
       <p className="mt-5 font-display text-2xl">No items yet</p>
       <p className="mt-1 max-w-xs text-sm text-muted">Save an item’s barcode and weight once — scan it any time after.</p>
+      <Button className="mt-6" icon={<UploadIcon size={18} />} onClick={onImport}>
+        Import from Excel
+      </Button>
     </div>
   );
 }

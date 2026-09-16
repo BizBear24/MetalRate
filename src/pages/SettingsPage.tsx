@@ -17,6 +17,8 @@ import { ConfirmSheet } from '@/components/Sheet';
 import { useToast } from '@/components/Toast';
 import { LogoMark } from '@/components/Logo';
 import { DownloadIcon, RefreshIcon, TrashIcon, UploadIcon } from '@/components/Icons';
+import { InventoryImport } from '@/features/items/InventoryImport';
+import { downloadInventoryTemplate, exportInventoryWorkbook } from '@/services/storage/inventorySheet';
 
 const THEMES: { value: ThemePreference; label: string }[] = [
   { value: 'dark', label: 'Dark' },
@@ -32,6 +34,7 @@ export function SettingsPage() {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirm, setConfirm] = useState<null | 'clear' | 'demo'>(null);
+  const [importing, setImporting] = useState(false);
 
   const provider = getProvider(settings.priceProviderId);
   const demoCount = items.filter((i) => i.isDemo).length;
@@ -39,7 +42,16 @@ export function SettingsPage() {
   const setBarcode = (fn: (b: BarcodeSettings) => BarcodeSettings) =>
     update((s: AppSettings) => ({ ...s, barcode: fn(s.barcode) }));
 
-  const exportItems = () => {
+  const makeFile = async (task: () => Promise<void>, done: string) => {
+    try {
+      await task();
+      toast(done);
+    } catch {
+      toast('Couldn’t create the file', 'error');
+    }
+  };
+
+  const backupItems = () => {
     const blob = new Blob([itemsRepo.export()], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = Object.assign(document.createElement('a'), {
@@ -48,10 +60,10 @@ export function SettingsPage() {
     });
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast(`Exported ${items.length} item${items.length === 1 ? '' : 's'}`);
+    toast(`Backed up ${items.length} item${items.length === 1 ? '' : 's'}`);
   };
 
-  const importItems = async (file: File) => {
+  const restoreItems = async (file: File) => {
     try {
       const r = itemsRepo.import(await file.text());
       toast(`Imported ${r.added} new, ${r.updated} updated${r.skipped ? `, ${r.skipped} skipped` : ''}`);
@@ -136,8 +148,20 @@ export function SettingsPage() {
       </Section>
 
       <Section title="Data">
-        <ActionRow icon={<DownloadIcon size={18} />} label="Export items" detail={`${items.length} items · JSON`} onClick={exportItems} />
-        <ActionRow icon={<UploadIcon size={18} />} label="Import items" detail="Merges by barcode" onClick={() => fileRef.current?.click()} />
+        <ActionRow icon={<UploadIcon size={18} />} label="Import from Excel" detail=".xlsx or .csv" onClick={() => setImporting(true)} />
+        <ActionRow
+          icon={<DownloadIcon size={18} />}
+          label="Download Excel template"
+          onClick={() => makeFile(downloadInventoryTemplate, 'Template downloaded')}
+        />
+        <ActionRow
+          icon={<DownloadIcon size={18} />}
+          label="Export items to Excel"
+          detail={`${items.length} items`}
+          onClick={() => makeFile(() => exportInventoryWorkbook(items), `Exported ${items.length} items`)}
+        />
+        <ActionRow icon={<DownloadIcon size={18} />} label="Backup (JSON)" detail="Full copy" onClick={backupItems} subtle />
+        <ActionRow icon={<UploadIcon size={18} />} label="Restore backup" detail="JSON" onClick={() => fileRef.current?.click()} subtle />
         <input
           ref={fileRef}
           type="file"
@@ -145,7 +169,7 @@ export function SettingsPage() {
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) void importItems(f);
+            if (f) void restoreItems(f);
             e.target.value = '';
           }}
         />
@@ -172,6 +196,8 @@ export function SettingsPage() {
           .
         </p>
       </Section>
+
+      <InventoryImport open={importing} onClose={() => setImporting(false)} />
 
       <ConfirmSheet
         open={confirm === 'clear'}
