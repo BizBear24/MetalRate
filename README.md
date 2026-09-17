@@ -2,8 +2,9 @@
 
 **Scan → weight → live price → value.** A small web app for gold and silver shops. Scan an item's barcode and GoldCalc shows its metal value at the current market price, plus any fixed charges saved for that item.
 
-> **Estimated total = weight × live rate for the purity + making charges + stone charges + diamond charges.**
-> The three charges are optional fixed rupee amounts saved on each item. They don't change with the metal rate, and any that don't apply are left blank. GST is not included.
+> **Price breakdown** (shown on the result screen, on estimates and bills, and in the Excel export):
+> metal value (weight × live rate for the purity) + making charges + stone charges + diamond charges = total before GST, then GST (CGST + SGST or IGST) = total incl. GST.
+> The three charges are optional fixed rupee amounts saved on each item. They don't change with the metal rate, and any that don't apply show as "—". The GST rate is set in Settings (default 3%; 0 leaves GST out).
 
 ## Run it
 
@@ -95,13 +96,20 @@ You can load your whole stock list at once instead of adding items one by one.
 1. Go to **Items → Import** (or **Settings → Data → Download Excel template**) and download `GoldCalc-inventory-template.xlsx`.
 2. Fill in the **Inventory** sheet, one row per item:
 
-   | Barcode | Metal | Purity | Net Weight (g) | Item Name | Making Charges (₹) | Stone Charges (₹) | Diamond Charges (₹) |
-   |---|---|---|---|---|---|---|---|
-   | 000451 | Gold | 22K | 12.35 | Gold Bangle | 4200 | 3500 | |
-   | 000452 | Gold | 18K | 3.105 | Diamond Pendant | 1800 | | 45000 |
-   | 000453 | Silver | 925 | 48.10 | Anklet Pair | | | |
+   | Barcode | Metal | Purity | Net Weight (g) | Item Name | Making Charges (₹) | Stone Charges (₹) | Diamond Charges (₹) | Photo |
+   |---|---|---|---|---|---|---|---|---|
+   | 000451 | Gold | 22K | 12.35 | Gold Bangle | 4200 | 3500 | | *(picture)* |
+   | 000452 | Gold | 18K | 3.105 | Diamond Pendant | 1800 | | 45000 | *(picture)* |
+   | 000453 | Silver | 925 | 48.10 | Anklet Pair | | | | |
 
-   The three charge columns are optional. Leave a cell blank when that charge doesn't apply. Amounts like `2,500`, `₹2,500` or `Rs. 2500/-` are all accepted. Columns named *Labour*, *MC*, *Stone Value* or *Diamond Amount* are also recognised.
+   The charge columns are optional. Leave a cell blank when that charge doesn't apply. Amounts like `2,500`, `₹2,500` or `Rs. 2500/-` are all accepted. Columns named *Labour*, *MC*, *Stone Value* or *Diamond Amount* are also recognised.
+
+   **Photo (optional).** Put the item's picture on its row:
+   - **Excel:** click the Photo cell, then **Insert → Pictures → Place in Cell**. A picture pasted over the sheet also works, as long as its top-left corner is inside that row.
+   - **Google Sheets:** use **Insert → Image → Image in cell**, then **File → Download → Microsoft Excel (.xlsx)**.
+   - **WPS Office:** right-click the picture and choose **Embed in cell**.
+
+   JPEG, PNG, GIF, BMP and WebP are supported. Each picture is resized and stored as the item's photo. Pictures on rows that are skipped or have no item are counted in the preview and not imported.
 
 3. Upload the file (`.xlsx` or `.csv`). A preview shows how many items are new, how many will be updated and which rows will be skipped, with the row number and reason for each. Nothing is saved until you press **Import**.
 
@@ -110,34 +118,50 @@ How the import reads your sheet:
 - Purity can be written in common shop notations: `22`, `22KT`, `22 ct`, `916`, `91.6`, `750`, `92.5`, `Sterling`. If the Metal cell is blank, it is worked out from the purity, except for `999`, which could be gold or silver.
 - Your own sheets work too, as long as they have a header row. Common column names are recognised (`Tag No`, `SKU`, `Karat`, `Net Wt`, `Description`…), and **Net Wt** is used in preference to **Gross Wt**. Title rows above the header are fine.
 - The template's Barcode column is formatted as text, so leading zeros (`000451`) are kept. The Instructions sheet and its example rows are never imported.
-- **Settings → Data → Export items to Excel** writes your current items in the same layout, so you can edit them in Excel and upload the file again.
+- **Settings → Data → Export items to Excel** writes your current items in the same layout, with each photo embedded on its row. You can edit the file in Excel and upload it again.
+- The export also adds grey reference columns: **Rate Today**, **Metal Value Today** and **Total Today**. These are ignored when you upload the file again.
 - Old `.xls` files aren't supported. Save them as `.xlsx` first.
 
 ## Item photos
 
 In **Add / Edit Item**, tap **Take photo** to use the camera, or **Choose from gallery**. Photos are resized on the phone (longest side 1280 px, JPEG) to about 30–200 KB each. They're stored in the browser's IndexedDB, so they work offline. Photos appear in the Items list, on the scan screen, on the result screen (tap to enlarge) and on printed estimates.
 
-Photos stay on the device that took them. The JSON backup and the Excel export contain item data only, not photos.
+Photos stay on the device. To move them to another phone, use **Export items to Excel** (photos are embedded) and import that file on the other phone. The JSON backup doesn't include photos.
 
-## Estimates
+## Estimates and bills
 
-Build a customer estimate from one or more items and print it or save it as a PDF.
+The **Billing** tab builds an **Estimate** or a **Bill (tax invoice)** from one or more items. Use the switch at the top to choose, so you can show an estimate first and then print the same items as a bill.
 
-1. On a result screen, tap **Add to estimate**. You can also open the **Estimate** tab and use **Scan item** (the scanner stays open, so you can scan several pieces in a row) or **From items**.
-2. Add the customer's name and phone if you want them on the estimate.
-3. Tap **Print / Save PDF**. This opens the system print dialog, where you can choose a printer or **Save as PDF**. On phones, use the share / print option that appears.
+1. On a result screen, tap **Estimate / Bill**. You can also open **Billing** and use **Scan item** (the scanner stays open, so you can scan several pieces in a row) or **From items**.
+2. Add the customer's details:
+   - **Estimate:** name and phone.
+   - **Bill:** name (required), phone, address, the customer's GSTIN for B2B sales, and the payment mode (Cash, UPI, Card, Bank transfer, Old gold exchange).
+3. **Bill only:** choose **CGST + SGST** (sale within your state) or **IGST** (out-of-state sale).
+4. Tap **Print Estimate / PDF** or **Print Bill / PDF**. This opens the system print dialog, where you can print or save as PDF.
 
-The printed A4 estimate shows:
+The printed A4 document shows:
 - your shop name, address, phone and GSTIN
-- the estimate number (`EST-0001`, …), the date and the customer
+- **ESTIMATE** or **TAX INVOICE**, the number (`EST-0001…` / `INV-0001…`), date and time, and the HSN code on bills
+- the customer, the supply type and the payment mode (bills)
 - the rates applied, with a timestamp and whether they were live
-- each item with its photo, net weight, rate, metal value, making / stone / diamond charges and amount
-- the subtotal, GST, estimated total and the amount in words (Indian system)
-- a footer note and a signature line
+- the **full breakdown for each item**: photo, name, purity, barcode, net weight, rate per gram, metal value, making, stone, diamond and amount, plus a totals row
+- the metal value and each charge total, the taxable value (bill) or subtotal (estimate), CGST + SGST or IGST, the total, and the amount in words (Indian system)
+- a footer note (separate notes for estimates and bills) and a signature line
 
-Set up your shop details under **Settings → Estimate**. There you can also set the GST % (default 3%; set 0 to leave GST out) and edit the footer note.
+**Numbering.** A number is used up only the first time that document is printed; reprinting keeps the same number. Estimates and bills have separate number sequences. **New** clears the items and customer.
 
-Rates on an estimate stay live until you print. **New** clears the estimate and starts the next number.
+**Rates.** Rates stay live until you print. **Print** fetches a fresh rate first if the last one is more than 30 seconds old. The printed page is your record of the rate used.
+
+### Shop & Billing settings
+
+**Settings → Shop & Billing** controls what's printed on every estimate and bill:
+- shop name, address, phone and GSTIN
+- GST rate (default 3%)
+- default GST type for new bills
+- HSN code (default 7113)
+- estimate and bill footer notes
+
+The result screen uses the same GST rate for its "Total incl. GST".
 
 ## Data and offline use
 
@@ -153,14 +177,14 @@ src/
   services/
     barcode/             parser (encoded formats), resolver, camera scanner engine
     price/               provider interface, gold-api provider, FX, unit conversion, cache
-    storage/             items repository, photo store (IndexedDB), settings, Excel import/export, demo data
+    storage/             items repository, photo store (IndexedDB), settings, Excel import/export (+ picture reader), demo data
   features/
     calculator/          purity factors, valuation + charges, useValuation hook
     pricing/             auto-refreshing price store + hooks
     scanner/             ScannerView (camera UI)
     items/               Excel import dialog, photo picker
-    estimate/            estimate draft, totals + amount in words, printable document
-  pages/                 Home, Scan, Result, Items, Item form, Estimate, Settings
+    estimate/            estimate / bill draft, totals, GST split, amount in words, printable document
+  pages/                 Home, Scan, Result, Items, Item form, Billing (estimate / bill), Settings
   components/            Buttons, sheets, toasts, form controls, logo, icons
   lib/                   formatting (₹1,25,430), storage helpers, hash router
 ```

@@ -4,7 +4,10 @@ import { priceStore } from '@/features/pricing/priceStore';
 import { useRoute, navigate, goBack } from '@/lib/router';
 import { useValuation } from '@/features/calculator/useValuation';
 import { formatPurity, metalLabel } from '@/features/calculator/purity';
-import { chargeLines, type Valuation } from '@/features/calculator/calculate';
+import { CHARGE_LABELS, chargeLines, type Valuation } from '@/features/calculator/calculate';
+import { gstLines, type TaxLine } from '@/features/estimate/buildEstimate';
+import { useSettings } from '@/hooks/useSettings';
+import { CHARGE_FIELDS, type ItemCharges } from '@/types';
 import { formatGrams, formatINR, formatRate, maskBarcode, timeAgo } from '@/lib/format';
 import { useNow } from '@/hooks/useNow';
 import { Page } from '@/components/Layout';
@@ -29,6 +32,7 @@ export function ResultPage() {
   const { resolution, item, price, valuation, adjustmentPct } = useValuation(code);
   const now = useNow(5000);
   const toast = useToast();
+  const { settings } = useSettings();
   const onEstimate = useEstimateDraft().codes.includes(code.trim());
 
   // Never value an item against a price that hasn't been checked in the last 30 s.
@@ -71,19 +75,25 @@ export function ResultPage() {
   const updated = price.price ? timeAgo(price.price.timestamp, now) : '—';
   const stale = price.status === 'offline' || price.status === 'delayed';
   const hasCharges = chargeLines(item).length > 0;
+  const taxes = valuation ? gstLines(valuation.total, settings.estimate.gstPct, settings.estimate.defaultGstMode) : [];
+  const gst = taxes.reduce((sum, t) => sum + t.amount, 0);
+  const grandTotal = valuation ? valuation.total + gst : 0;
 
   const share = async () => {
     if (!valuation) return;
     const text = [
-      hasCharges ? `GoldCalc — Estimated Total` : `GoldCalc — Estimated Metal Value`,
+      `GoldCalc — Price breakdown`,
       item.name,
       `${metal} ${item.purity} · ${formatGrams(item.weightGrams)}`,
       `Rate ${formatRate(valuation.ratePerGram)}/g`,
-      `Metal value ${formatINR(valuation.value)}`,
-      ...valuation.charges.map((c) => `+ ${c.label} ${formatINR(c.amount)}`),
-      hasCharges ? `Total ${formatINR(valuation.total)}` : null,
+      `Metal value ${formatGrams(item.weightGrams)} × ${formatRate(valuation.ratePerGram)} = ${formatINR(valuation.value)}`,
+      `Making charges ${item.makingCharges ? formatINR(item.makingCharges) : '—'}`,
+      `Stone charges ${item.stoneCharges ? formatINR(item.stoneCharges) : '—'}`,
+      `Diamond charges ${item.diamondCharges ? formatINR(item.diamondCharges) : '—'}`,
+      `Total before GST ${formatINR(valuation.total)}`,
+      ...taxes.map((t) => `${t.label} ${t.pct}% ${formatINR(t.amount)}`),
+      taxes.length ? `Total incl. GST ${formatINR(grandTotal)}` : null,
       `Price ${price.status === 'live' ? 'live' : 'last known'}, updated ${updated}`,
-      `Excludes GST.`,
     ]
       .filter(Boolean)
       .join('\n');
@@ -139,22 +149,17 @@ export function ResultPage() {
 
       {/* Hero value */}
       <section className="text-center" aria-live="polite">
-        <div className="eyebrow">{hasCharges ? 'Estimated Total' : 'Estimated Value'}</div>
+        <div className="eyebrow">{taxes.length ? 'Total incl. GST' : hasCharges ? 'Estimated Total' : 'Estimated Value'}</div>
         {valuation ? (
           <div className="num gold-text mt-3 text-[clamp(3rem,15vw,4.6rem)] leading-none font-light">
-            <CountUp value={valuation.total} format={formatINR} />
+            <CountUp value={grandTotal} format={formatINR} />
           </div>
         ) : price.status === 'loading' ? (
           <div className="skeleton mx-auto mt-3 h-16 w-64" aria-label="Loading price" />
         ) : (
           <PriceUnavailable onRetry={price.refresh} />
         )}
-        {valuation && !hasCharges && (
-          <p className="num mt-3 text-[0.8rem] text-muted">
-            {formatGrams(item.weightGrams)} × {formatRate(valuation.ratePerGram)} = {formatINR(valuation.value)}
-          </p>
-        )}
-        {valuation && hasCharges && <Breakdown valuation={valuation} weightGrams={item.weightGrams} />}
+        {valuation && <Breakdown valuation={valuation} weightGrams={item.weightGrams} item={item} taxes={taxes} grandTotal={grandTotal} />}
       </section>
 
       <div className="hairline my-8" />
@@ -179,8 +184,9 @@ export function ResultPage() {
       </dl>
       <p className="mt-3 text-center text-[0.7rem] leading-relaxed text-faint">
         {hasCharges
-          ? 'Metal value at the current rate plus this item’s fixed charges. Excludes GST.'
-          : 'Metal value only — no making, stone or diamond charges saved for this item. Excludes GST.'}
+          ? 'Metal value at the current rate, plus this item’s fixed charges'
+          : 'No making, stone or diamond charges saved for this item'}
+        {taxes.length ? ` and GST @ ${settings.estimate.gstPct}%.` : '. GST not included.'}
       </p>
 
       <div className="mt-auto grid gap-3 pt-8">
@@ -193,11 +199,11 @@ export function ResultPage() {
           icon={<ReceiptIcon size={18} />}
           disabled={!valuation}
           onClick={() => {
-            if (estimateStore.add(code)) toast('Added to estimate');
+            if (estimateStore.add(code)) toast('Added to billing');
             navigate('/estimate');
           }}
         >
-          {onEstimate ? 'View estimate' : 'Add to estimate'}
+          {onEstimate ? 'Open billing' : 'Estimate / Bill'}
         </Button>
         {item.itemId ? (
           <Button
@@ -281,29 +287,50 @@ function HeroPhoto({ itemId, alt }: { itemId: string; alt: string }) {
   );
 }
 
-function Breakdown({ valuation, weightGrams }: { valuation: Valuation; weightGrams: number }) {
+function Breakdown({
+  valuation,
+  weightGrams,
+  item,
+  taxes,
+  grandTotal,
+}: {
+  valuation: Valuation;
+  weightGrams: number;
+  item: ItemCharges;
+  taxes: TaxLine[];
+  grandTotal: number;
+}) {
   return (
     <dl className="num mx-auto mt-6 max-w-sm space-y-2 text-left text-sm">
-      <div className="flex items-baseline justify-between gap-3">
-        <dt className="text-muted">
-          Metal value
-          <span className="ml-1.5 text-xs text-faint">
-            {formatGrams(weightGrams)} × {formatRate(valuation.ratePerGram)}
-          </span>
-        </dt>
-        <dd className="font-medium text-ink">{formatINR(valuation.value)}</dd>
-      </div>
-      {valuation.charges.map((c) => (
-        <div key={c.field} className="flex items-baseline justify-between gap-3">
-          <dt className="text-muted">+ {c.label}</dt>
-          <dd className="font-medium text-ink">{formatINR(c.amount)}</dd>
-        </div>
+      <BreakdownRow
+        label={
+          <>
+            Metal value
+            <span className="ml-1.5 text-xs text-faint">
+              {formatGrams(weightGrams)} × {formatRate(valuation.ratePerGram)}
+            </span>
+          </>
+        }
+        value={formatINR(valuation.value)}
+      />
+      {CHARGE_FIELDS.map((f) => (
+        <BreakdownRow key={f} label={`+ ${CHARGE_LABELS[f]}`} value={item[f] ? formatINR(item[f]!) : '—'} muted={!item[f]} />
       ))}
-      <div className="flex items-baseline justify-between gap-3 border-t border-line-strong pt-2">
-        <dt className="font-semibold text-ink">Total</dt>
-        <dd className="font-semibold text-gold">{formatINR(valuation.total)}</dd>
-      </div>
+      <BreakdownRow label="Total before GST" value={formatINR(valuation.total)} rule strong={!taxes.length} />
+      {taxes.map((t) => (
+        <BreakdownRow key={t.label} label={`+ ${t.label} @ ${t.pct}%`} value={formatINR(t.amount)} />
+      ))}
+      {taxes.length > 0 && <BreakdownRow label="Total incl. GST" value={formatINR(grandTotal)} rule strong />}
     </dl>
+  );
+}
+
+function BreakdownRow({ label, value, rule, strong, muted }: { label: ReactNode; value: string; rule?: boolean; strong?: boolean; muted?: boolean }) {
+  return (
+    <div className={`flex items-baseline justify-between gap-3 ${rule ? 'border-t border-line-strong pt-2' : ''}`}>
+      <dt className={strong ? 'font-semibold text-ink' : rule ? 'font-medium text-ink' : 'text-muted'}>{label}</dt>
+      <dd className={strong ? 'font-semibold text-gold' : muted ? 'text-faint' : 'font-medium text-ink'}>{value}</dd>
+    </div>
   );
 }
 

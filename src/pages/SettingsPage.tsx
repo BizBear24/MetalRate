@@ -20,6 +20,8 @@ import { LogoMark } from '@/components/Logo';
 import { DownloadIcon, RefreshIcon, TrashIcon, UploadIcon } from '@/components/Icons';
 import { InventoryImport } from '@/features/items/InventoryImport';
 import { downloadInventoryTemplate, exportInventoryWorkbook } from '@/services/storage/inventorySheet';
+import { photoStore } from '@/services/storage/photoStore';
+import { valuate } from '@/features/calculator/calculate';
 
 const THEMES: { value: ThemePreference; label: string }[] = [
   { value: 'dark', label: 'Dark' },
@@ -129,9 +131,9 @@ export function SettingsPage() {
         </div>
       </Section>
 
-      <Section title="Estimate" id="estimate">
+      <Section title="Shop & Billing" id="estimate">
         <div className="space-y-3 py-4">
-          <p className="text-xs leading-relaxed text-muted">Printed at the top of every estimate.</p>
+          <p className="text-xs leading-relaxed text-muted">Printed at the top of every estimate and bill.</p>
           <TextSetting label="Shop name" value={settings.estimate.shopName} onChange={(shopName) => setEstimate({ shopName })} maxLength={60} />
           <TextSetting
             label="Address"
@@ -150,14 +152,45 @@ export function SettingsPage() {
             />
           </div>
         </div>
-        <Row label="GST on estimate" detail="Applied to the estimate subtotal. Set 0 to leave GST out.">
+        <Row label="GST rate" detail="Total GST on the taxable value (3% for jewellery). Set 0 to leave GST out.">
           <PercentInput value={settings.estimate.gstPct} min={0} max={28} onChange={(gstPct) => setEstimate({ gstPct })} label="GST percent" />
         </Row>
         <div className="py-4">
+          <div className="mb-2 text-[0.92rem] font-medium text-ink">Default GST type for new bills</div>
+          <Segmented
+            size="sm"
+            label="Default GST type"
+            value={settings.estimate.defaultGstMode}
+            options={[
+              { value: 'intra', label: 'CGST + SGST (in-state)' },
+              { value: 'inter', label: 'IGST (out of state)' },
+            ]}
+            onChange={(defaultGstMode) => setEstimate({ defaultGstMode })}
+          />
+          <p className="mt-2 text-xs text-muted">You can still switch it on each bill.</p>
+        </div>
+        <Row label="HSN code" detail="Printed on bills. 7113 = articles of jewellery.">
+          <input
+            aria-label="HSN code"
+            inputMode="numeric"
+            className="field num h-11 w-24 text-center text-sm"
+            value={settings.estimate.hsn}
+            maxLength={8}
+            onChange={(e) => setEstimate({ hsn: e.target.value.replace(/\D/g, '') })}
+          />
+        </Row>
+        <div className="space-y-3 py-4">
           <TextSetting
-            label="Footer note"
+            label="Estimate footer note"
             value={settings.estimate.footerNote}
             onChange={(footerNote) => setEstimate({ footerNote })}
+            multiline
+            maxLength={300}
+          />
+          <TextSetting
+            label="Bill footer note"
+            value={settings.estimate.billFooterNote}
+            onChange={(billFooterNote) => setEstimate({ billFooterNote })}
             multiline
             maxLength={300}
           />
@@ -210,8 +243,20 @@ export function SettingsPage() {
         <ActionRow
           icon={<DownloadIcon size={18} />}
           label="Export items to Excel"
-          detail={`${items.length} items`}
-          onClick={() => makeFile(() => exportInventoryWorkbook(items), `Exported ${items.length} items`)}
+          detail={`${items.length} items · with photos`}
+          onClick={() =>
+            makeFile(
+              () =>
+                exportInventoryWorkbook(items, {
+                  todayValue: (i) => {
+                    const p = priceStore.price(i.metal);
+                    return p ? valuate(p.pricePerGramINR, i.purity, i.weightGrams, settings.marketAdjustmentPct, i) : undefined;
+                  },
+                  photoOf: (i) => (i.id ? photoStore.get(i.id) : Promise.resolve(undefined)),
+                }),
+              `Exported ${items.length} items`,
+            )
+          }
         />
         <ActionRow icon={<DownloadIcon size={18} />} label="Backup (JSON)" detail="Full copy" onClick={backupItems} subtle />
         <ActionRow icon={<UploadIcon size={18} />} label="Restore backup" detail="JSON" onClick={() => fileRef.current?.click()} subtle />

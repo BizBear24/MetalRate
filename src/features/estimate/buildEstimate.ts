@@ -1,4 +1,4 @@
-import type { Metal, ResolvedItem, Resolution } from '@/types';
+import type { GstMode, Metal, ResolvedItem, Resolution } from '@/types';
 import { valuate, type Valuation } from '@/features/calculator/calculate';
 
 export interface EstimateLine {
@@ -8,11 +8,29 @@ export interface EstimateLine {
   problem?: 'not-found' | 'no-price';
 }
 
+export interface TaxLine {
+  label: string;
+  pct: number;
+  amount: number;
+}
+
+/** Column totals for the full breakdown. */
+export interface BreakdownTotals {
+  weightGrams: number;
+  metalValue: number;
+  making: number;
+  stone: number;
+  diamond: number;
+}
+
 export interface EstimateTotals {
   lines: EstimateLine[];
-  /** Sum of line totals (metal value + charges). */
+  breakdown: BreakdownTotals;
+  /** Sum of line totals (metal value + charges) — the taxable value. */
   subtotal: number;
   gstPct: number;
+  gstMode: GstMode;
+  taxes: TaxLine[];
   gst: number;
   total: number;
   /** Every line could be valued. */
@@ -21,11 +39,26 @@ export interface EstimateTotals {
   rates: { metal: Metal; purity: string; ratePerGram: number }[];
 }
 
+/**
+ * CGST + SGST split the GST equally; each half is rounded to the rupee so the printed
+ * lines always add up to the total.
+ */
+export function gstLines(subtotal: number, gstPct: number, mode: GstMode): TaxLine[] {
+  const pct = Math.max(0, gstPct || 0);
+  if (!pct) return [];
+  if (mode === 'inter') return [{ label: 'IGST', pct, amount: Math.round((subtotal * pct) / 100) }];
+  const half = Math.round((subtotal * pct) / 200);
+  return [
+    { label: 'CGST', pct: pct / 2, amount: half },
+    { label: 'SGST', pct: pct / 2, amount: half },
+  ];
+}
+
 export function buildEstimate(
   codes: string[],
   resolve: (code: string) => Resolution,
   purePrice: (metal: Metal) => number | undefined,
-  opts: { adjustmentPct: number; gstPct: number },
+  opts: { adjustmentPct: number; gstPct: number; gstMode?: GstMode },
 ): EstimateTotals {
   const lines: EstimateLine[] = codes.map((code) => {
     const r = resolve(code);
@@ -39,9 +72,21 @@ export function buildEstimate(
     };
   });
 
+  const breakdown: BreakdownTotals = { weightGrams: 0, metalValue: 0, making: 0, stone: 0, diamond: 0 };
+  for (const l of lines) {
+    if (!l.item || !l.valuation) continue;
+    breakdown.weightGrams = Math.round((breakdown.weightGrams + l.item.weightGrams) * 1000) / 1000;
+    breakdown.metalValue += l.valuation.value;
+    breakdown.making += l.item.makingCharges ?? 0;
+    breakdown.stone += l.item.stoneCharges ?? 0;
+    breakdown.diamond += l.item.diamondCharges ?? 0;
+  }
+
   const subtotal = lines.reduce((s, l) => s + (l.valuation?.total ?? 0), 0);
   const gstPct = Math.max(0, opts.gstPct || 0);
-  const gst = Math.round((subtotal * gstPct) / 100);
+  const gstMode = opts.gstMode ?? 'intra';
+  const taxes = gstLines(subtotal, gstPct, gstMode);
+  const gst = taxes.reduce((s, t) => s + t.amount, 0);
 
   const seen = new Set<string>();
   const rates: EstimateTotals['rates'] = [];
@@ -55,8 +100,11 @@ export function buildEstimate(
 
   return {
     lines,
+    breakdown,
     subtotal,
     gstPct,
+    gstMode,
+    taxes,
     gst,
     total: subtotal + gst,
     complete: lines.length > 0 && lines.every((l) => l.valuation),

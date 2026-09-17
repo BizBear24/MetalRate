@@ -7,7 +7,7 @@ import { IconButton } from './Button';
 const TABS = [
   { path: '/', label: 'Home', Icon: HomeIcon },
   { path: '/items', label: 'Items', Icon: ItemsIcon },
-  { path: '/estimate', label: 'Estimate', Icon: ReceiptIcon },
+  { path: '/estimate', label: 'Billing', Icon: ReceiptIcon },
   { path: '/settings', label: 'Settings', Icon: SettingsIcon },
 ] as const;
 

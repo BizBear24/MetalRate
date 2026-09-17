@@ -105,7 +105,12 @@ export const itemsRepo = {
   },
 
   setHasPhoto(id: string, hasPhoto: boolean): void {
-    commit(load().map((i) => (i.id === id ? { ...i, hasPhoto: hasPhoto || undefined } : i)));
+    this.setHasPhotoMany([id], hasPhoto);
+  },
+
+  setHasPhotoMany(ids: string[], hasPhoto: boolean): void {
+    const set = new Set(ids);
+    commit(load().map((i) => (set.has(i.id) ? { ...i, hasPhoto: hasPhoto || undefined } : i)));
   },
 
   removeDemo(): number {

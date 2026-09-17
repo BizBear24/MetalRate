@@ -119,12 +119,21 @@ export interface AppSettings {
 }
 
 /** Shop details and tax shown on printed estimates. */
+/** In-state sale: CGST + SGST (half each). Out-of-state: IGST. */
+export type GstMode = 'intra' | 'inter';
+
+/** Shop details and tax used on printed estimates and bills. */
 export interface EstimateSettings {
   shopName: string;
   address: string;
   phone: string;
   gstin: string;
-  /** GST % applied to the estimate subtotal. 0 hides the GST line. */
+  /** Total GST % on the subtotal (3% for jewellery). 0 leaves GST out. */
   gstPct: number;
+  /** Pre-selected GST type for new bills. */
+  defaultGstMode: GstMode;
+  /** HSN code printed on bills (7113 = jewellery). */
+  hsn: string;
   footerNote: string;
+  billFooterNote: string;
 }

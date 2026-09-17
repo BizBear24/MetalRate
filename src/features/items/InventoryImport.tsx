@@ -2,13 +2,15 @@ import { useRef, useState } from 'react';
 import { Sheet } from '@/components/Sheet';
 import { Button } from '@/components/Button';
 import { useToast } from '@/components/Toast';
-import { AlertIcon, CheckIcon, DownloadIcon, UploadIcon } from '@/components/Icons';
+import { AlertIcon, CheckIcon, DownloadIcon, ImageIcon, UploadIcon } from '@/components/Icons';
 import { itemsRepo } from '@/services/storage/itemsRepo';
 import { downloadInventoryTemplate, readInventoryFile, type ParsedInventory } from '@/services/storage/inventorySheet';
+import { photoStore } from '@/services/storage/photoStore';
+import { compressImage } from '@/lib/image';
 
 type State =
   | { step: 'pick'; busy?: boolean; error?: string }
-  | { step: 'preview'; fileName: string; parsed: ParsedInventory; existing: number };
+  | { step: 'preview'; fileName: string; parsed: ParsedInventory; existing: number; saving?: string };
 
 const ACCEPT = '.xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv';
 
@@ -55,15 +57,35 @@ export function InventoryImport({ open, onClose }: { open: boolean; onClose: () 
     }
   };
 
-  const confirm = () => {
-    if (state.step !== 'preview') return;
+  const confirm = async () => {
+    if (state.step !== 'preview' || state.saving) return;
+    let r: { added: number; updated: number };
     try {
-      const r = itemsRepo.upsertMany(state.parsed.items);
-      toast(`Imported ${r.added} new${r.updated ? `, updated ${r.updated}` : ''}`);
-      close();
+      r = itemsRepo.upsertMany(state.parsed.items);
     } catch (e) {
       toast((e as Error).message, 'error');
+      return;
     }
+    const photos = [...(state.parsed.photos ?? new Map<string, Blob>())];
+    const saved: string[] = [];
+    let failed = 0;
+    for (const [n, [barcode, blob]] of photos.entries()) {
+      setState({ ...state, saving: `Saving photos ${n + 1} / ${photos.length}…` });
+      const item = itemsRepo.findByBarcode(barcode);
+      if (!item) continue;
+      try {
+        await photoStore.put(item.id, await compressImage(blob));
+        saved.push(item.id);
+      } catch {
+        failed++;
+      }
+    }
+    if (saved.length) itemsRepo.setHasPhotoMany(saved, true);
+    toast(
+      `Imported ${r.added} new${r.updated ? `, updated ${r.updated}` : ''}${saved.length ? `, ${saved.length} photo${saved.length === 1 ? '' : 's'}` : ''}${failed ? ` (${failed} photo${failed === 1 ? '' : 's'} unreadable)` : ''}`,
+      failed ? 'error' : 'success',
+    );
+    close();
   };
 
   return (
@@ -76,7 +98,7 @@ export function InventoryImport({ open, onClose }: { open: boolean; onClose: () 
         <>
           <p className="mt-1.5 text-sm leading-relaxed text-muted">
             Upload an Excel (.xlsx) or CSV file with one row per item: barcode, metal, purity and net weight, plus optional
-            making, stone and diamond charges.
+            making, stone and diamond charges and a photo pasted on the row.
           </p>
 
           <ol className="mt-5 space-y-3 text-sm">
@@ -135,7 +157,7 @@ export function InventoryImport({ open, onClose }: { open: boolean; onClose: () 
           </div>
         </>
       ) : (
-        <Preview state={state} onBack={() => setState({ step: 'pick' })} onConfirm={confirm} />
+        <Preview state={state} onBack={() => setState({ step: 'pick' })} onConfirm={() => void confirm()} />
       )}
     </Sheet>
   );
@@ -165,6 +187,7 @@ function Preview({
     (a, b) => a.row - b.row,
   );
   const shown = issues.slice(0, 50);
+  const photoCount = parsed.photos?.size ?? 0;
 
   return (
     <>
@@ -198,6 +221,14 @@ function Preview({
         </div>
       )}
 
+      {photoCount > 0 && (
+        <p className="mt-4 flex items-center gap-2 text-sm text-ink">
+          <ImageIcon size={18} className="shrink-0 text-gold" />
+          {photoCount} photo{photoCount === 1 ? '' : 's'} found in the sheet
+          {parsed.unmatchedPhotos ? <span className="text-muted">· {parsed.unmatchedPhotos} not on an item row</span> : null}
+        </p>
+      )}
+
       {count === 0 ? (
         <p className="mt-4 text-sm text-danger">No valid rows to import.</p>
       ) : (
@@ -211,8 +242,8 @@ function Preview({
 
       <div className="mt-6 grid grid-cols-2 gap-3">
         <Button onClick={onBack}>Choose another</Button>
-        <Button variant="gold" disabled={count === 0} onClick={onConfirm} data-autofocus>
-          Import {count}
+        <Button variant="gold" disabled={count === 0 || !!state.saving} onClick={onConfirm} data-autofocus>
+          {state.saving ?? `Import ${count}`}
         </Button>
       </div>
     </>

@@ -24,7 +24,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     phone: '',
     gstin: '',
     gstPct: 3,
+    defaultGstMode: 'intra',
+    hsn: '7113',
     footerNote: 'This is an estimate, not a tax invoice. Final amount depends on the actual weight and the rate on the day of billing.',
+    billFooterNote: 'Thank you for your purchase. Goods once sold will be exchanged as per shop policy.',
   },
 };
 

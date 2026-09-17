@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Resolution, ResolvedItem } from '@/types';
-import { buildEstimate, rupeesInWords } from '@/features/estimate/buildEstimate';
+import { buildEstimate, gstLines, rupeesInWords } from '@/features/estimate/buildEstimate';
 
 const ring: ResolvedItem = {
   barcode: 'R1', name: 'Ring', metal: 'gold', purity: '22K', weightGrams: 8.42,
@@ -69,5 +69,27 @@ describe('rupeesInWords', () => {
     expect(rupeesInWords(158743)).toBe('One Lakh Fifty Eight Thousand Seven Hundred Forty Three');
     expect(rupeesInWords(20000000)).toBe('Two Crore');
     expect(rupeesInWords(123456789)).toBe('Twelve Crore Thirty Four Lakh Fifty Six Thousand Seven Hundred Eighty Nine');
+  });
+});
+
+describe('GST on bills', () => {
+  it('splits in-state GST into CGST + SGST that add up', () => {
+    expect(gstLines(154119, 3, 'intra')).toEqual([
+      { label: 'CGST', pct: 1.5, amount: 2312 },
+      { label: 'SGST', pct: 1.5, amount: 2312 },
+    ]);
+  });
+  it('uses a single IGST line for out-of-state sales', () => {
+    expect(gstLines(154119, 3, 'inter')).toEqual([{ label: 'IGST', pct: 3, amount: 4624 }]);
+  });
+  it('no tax lines when GST is 0', () => {
+    expect(gstLines(1000, 0, 'intra')).toEqual([]);
+  });
+  it('totals include the full breakdown and the chosen GST type', () => {
+    const e = buildEstimate(['R1', 'C1', 'P1'], resolve, (m) => prices[m], { adjustmentPct: 0, gstPct: 3, gstMode: 'inter' });
+    expect(e.breakdown).toEqual({ weightGrams: 20.42, metalValue: 111619, making: 2500, stone: 0, diamond: 40000 });
+    expect(e.breakdown.metalValue + e.breakdown.making + e.breakdown.stone + e.breakdown.diamond).toBe(e.subtotal);
+    expect(e.taxes.map((t) => t.label)).toEqual(['IGST']);
+    expect(e.total).toBe(e.subtotal + e.gst);
   });
 });

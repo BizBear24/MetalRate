@@ -117,7 +117,7 @@ describe('file formats', () => {
 describe('pickInventorySheet', () => {
   it('never imports the example rows from the template’s Instructions sheet', async () => {
     const { pickInventorySheet } = await import('@/services/storage/inventorySheet');
-    const r = pickInventorySheet([
+    const { parsed: r } = pickInventorySheet([
       { sheet: 'Inventory', data: [HEADER] },
       { sheet: 'Instructions', data: [HEADER, ['890100000001', 'Gold', '22K', '8.42', 'Gold Ring']] },
     ]);
@@ -125,10 +125,28 @@ describe('pickInventorySheet', () => {
   });
   it('falls back to another sheet with a header', async () => {
     const { pickInventorySheet } = await import('@/services/storage/inventorySheet');
-    const r = pickInventorySheet([
+    const { parsed: r, sheet } = pickInventorySheet([
       { sheet: 'Cover', data: [['Stock list']] },
       { sheet: 'Stock', data: [HEADER, ['1', 'Gold', '22K', '2', '']] },
     ]);
     expect(r.items).toHaveLength(1);
+    expect(sheet).toBe('Stock');
+  });
+});
+
+describe('attachPhotos', () => {
+  it('matches pictures to the barcode on the same row', async () => {
+    const { attachPhotos } = await import('@/services/storage/inventorySheet');
+    const parsed = parseInventoryRows([
+      HEADER,
+      ['A1', 'Gold', '22K', '1', ''],
+      ['', 'Gold', '22K', '1', 'no barcode'],
+      ['C3', 'Gold', '22K', '1', ''],
+    ]);
+    const img = { data: new Uint8Array([1, 2, 3]), mime: 'image/png' };
+    attachPhotos(parsed, new Map([[2, img], [3, img], [4, img], [1, img]]));
+    expect([...parsed.photos!.keys()]).toEqual(['A1', 'C3']);
+    expect(parsed.photos!.get('A1')!.type).toBe('image/png');
+    expect(parsed.unmatchedPhotos).toBe(2);
   });
 });

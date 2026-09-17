@@ -24,6 +24,12 @@ export interface ParsedInventory {
   rowCount: number;
   /** A header row with at least Barcode and Weight columns was found. */
   hasHeader: boolean;
+  /** Excel row (1-based) each imported barcode came from. */
+  itemRows: Record<string, number>;
+  /** Pictures found on item rows, by barcode (.xlsx only). */
+  photos?: Map<string, Blob>;
+  /** Pictures on rows that were skipped or had no barcode. */
+  unmatchedPhotos?: number;
 }
 
 type Field = 'barcode' | 'metal' | 'purity' | 'weight' | 'name' | ChargeField;
@@ -126,7 +132,7 @@ export function parseWeightCell(v: RawCell): number | null {
 }
 
 export function parseInventoryRows(rows: RawCell[][]): ParsedInventory {
-  const result: ParsedInventory = { items: [], errors: [], warnings: [], rowCount: 0, hasHeader: false };
+  const result: ParsedInventory = { items: [], errors: [], warnings: [], rowCount: 0, hasHeader: false, itemRows: {} };
 
   let headerIdx = -1;
   let cols: Partial<Record<Field, number>> | null = null;
@@ -203,6 +209,7 @@ export function parseInventoryRows(rows: RawCell[][]): ParsedInventory {
   }
 
   result.items = [...byBarcode.values()].map((v) => v.draft);
+  for (const [barcode, v] of byBarcode) result.itemRows[barcode] = v.row;
   return result;
 }
 
@@ -256,32 +263,55 @@ export async function readInventoryFile(file: File): Promise<ParsedInventory> {
   if (name.endsWith('.xls')) {
     throw new Error('Old .xls files aren’t supported. In Excel, use File → Save As → Excel Workbook (.xlsx).');
   }
-  const { default: readXlsxFile } = await import('read-excel-file/browser');
+  const [{ default: readXlsxFile }, bytes] = await Promise.all([import('read-excel-file/browser'), file.arrayBuffer()]);
   let sheets: { sheet: string; data: RawCell[][] }[];
   try {
     // Keep numbers as their original text so long barcodes don't lose digits.
-    sheets = (await readXlsxFile(file, { parseNumber: (s: string) => s })) as typeof sheets;
+    sheets = (await readXlsxFile(bytes, { parseNumber: (s: string) => s })) as typeof sheets;
   } catch {
     throw new Error('Couldn’t read this file. Save it as .xlsx or .csv and try again.');
   }
-  return pickInventorySheet(sheets);
+  const { sheet, parsed } = pickInventorySheet(sheets);
+  if (sheet) {
+    try {
+      const { extractSheetImages } = await import('./xlsxImages');
+      const images = extractSheetImages(new Uint8Array(bytes)).get(sheet);
+      if (images?.size) attachPhotos(parsed, images);
+    } catch {
+      parsed.warnings.push({ row: 1, message: 'Pictures in this file couldn’t be read; item data was still imported.' });
+    }
+  }
+  return parsed;
+}
+
+export function attachPhotos(parsed: ParsedInventory, images: Map<number, { data: Uint8Array; mime: string }>) {
+  const barcodeByRow = new Map(Object.entries(parsed.itemRows).map(([barcode, row]) => [row, barcode]));
+  const photos = new Map<string, Blob>();
+  let unmatched = 0;
+  for (const [row, img] of images) {
+    const barcode = barcodeByRow.get(row);
+    if (barcode) photos.set(barcode, new Blob([img.data as BlobPart], { type: img.mime }));
+    else unmatched++;
+  }
+  parsed.photos = photos;
+  parsed.unmatchedPhotos = unmatched;
 }
 
 /**
  * Uses the template's "Inventory" sheet when present, otherwise the first sheet with a
  * recognisable header. The template's "Instructions" sheet (with example rows) is never read.
  */
-export function pickInventorySheet(sheets: { sheet: string; data: RawCell[][] }[]): ParsedInventory {
+export function pickInventorySheet(sheets: { sheet: string; data: RawCell[][] }[]): { sheet?: string; parsed: ParsedInventory } {
   const candidates = sheets
     .filter((s) => s.sheet !== 'Instructions')
     .sort((a, b) => Number(b.sheet === 'Inventory') - Number(a.sheet === 'Inventory'));
   let first: ParsedInventory | null = null;
   for (const s of candidates) {
     const parsed = parseInventoryRows(s.data);
-    if (parsed.hasHeader) return parsed;
+    if (parsed.hasHeader) return { sheet: s.sheet, parsed };
     first ??= parsed;
   }
-  return first ?? parseInventoryRows([]);
+  return { parsed: first ?? parseInventoryRows([]) };
 }
 
 const HEADER_STYLE = {
@@ -291,15 +321,27 @@ const HEADER_STYLE = {
   borderStyle: 'thin' as const,
   borderColor: '#9C7A3C',
 };
+const COMPUTED_HEADER_STYLE = { ...HEADER_STYLE, backgroundColor: '#E8E2D4', borderColor: '#B5AD9C' };
 const TEXT = '@';
 const RUPEES = '#,##0';
-const COLUMN_WIDTHS = [{ width: 22 }, { width: 10 }, { width: 10 }, { width: 16 }, { width: 28 }, { width: 20 }, { width: 19 }, { width: 21 }];
+const PHOTO_COL = FIELD_ORDER.length + 1;
+const PHOTO_PX = 64;
+const COLUMN_WIDTHS = [
+  { width: 22 }, { width: 10 }, { width: 10 }, { width: 16 }, { width: 28 },
+  { width: 20 }, { width: 19 }, { width: 21 }, { width: 14 },
+];
+const COMPUTED_HEADERS = ['Rate Today (₹/g)', 'Metal Value Today (₹)', 'Total Today (₹)'];
 
-function headerRow() {
-  return FIELD_ORDER.map((f) => ({ value: TEMPLATE_HEADERS[f], ...HEADER_STYLE }));
+type OutCell = { value?: string | number; type?: StringConstructor | NumberConstructor; format?: string; height?: number } | null;
+type OutRow = OutCell[];
+
+function headerRow(withComputed: boolean) {
+  return [
+    ...FIELD_ORDER.map((f) => ({ value: TEMPLATE_HEADERS[f], ...HEADER_STYLE })),
+    { value: 'Photo', ...HEADER_STYLE },
+    ...(withComputed ? COMPUTED_HEADERS.map((value) => ({ value, ...COMPUTED_HEADER_STYLE })) : []),
+  ];
 }
-
-type OutRow = ({ value?: string | number; type?: StringConstructor | NumberConstructor; format?: string } | null)[];
 
 function itemRow(i?: ItemDraft): OutRow {
   return [
@@ -310,8 +352,14 @@ function itemRow(i?: ItemDraft): OutRow {
     i ? { type: Number, value: i.weightGrams, format: '0.00#' } : { type: Number, format: '0.00#' },
     { type: String, value: i?.name ?? '', format: TEXT },
     ...CHARGE_FIELDS.map((f) => (i?.[f] ? { type: Number, value: i[f], format: RUPEES } : { type: Number, format: RUPEES })),
+    null, // Photo — pictures sit on top of this cell
   ];
 }
+
+const PHOTO_HELP =
+  'A picture of the item on the same row. Excel: click the Photo cell → Insert → Pictures → Place in Cell ' +
+  '(or paste a picture so its top-left corner is inside that row). Google Sheets: Insert → Image → Image in cell, ' +
+  'then File → Download → .xlsx. WPS Office: right-click the picture → Embed in cell. JPEG, PNG, GIF, BMP or WebP.';
 
 const INSTRUCTIONS: (string | null)[][] = [
   ['GoldCalc inventory template'],
@@ -328,18 +376,31 @@ const INSTRUCTIONS: (string | null)[][] = [
   ['Making Charges (₹)', 'No', 'Fixed rupee amount for this item, added on top of the metal value. Leave blank if none.'],
   ['Stone Charges (₹)', 'No', 'Fixed rupee amount for stones. Leave blank if the item has no stones.'],
   ['Diamond Charges (₹)', 'No', 'Fixed rupee amount for diamonds. Leave blank if the item has no diamonds.'],
+  ['Photo', 'No', PHOTO_HELP],
   [null],
-  ['Total shown in GoldCalc = Net Weight × live rate for the purity + Making + Stone + Diamond charges (GST not included).'],
+  ['Price breakdown in GoldCalc: Metal value (Net Weight × live rate for the purity) + Making + Stone + Diamond = Total before GST, then GST as set in Settings.'],
+  ['Exported item lists also include grey “Today” columns (rate, metal value, total) for reference — they are ignored when the file is uploaded again.'],
   [null],
   ['Example rows (do not paste these into your inventory):'],
-  ['Barcode', 'Metal', 'Purity', 'Net Weight (g)', 'Item Name', 'Making Charges (₹)', 'Stone Charges (₹)', 'Diamond Charges (₹)'],
-  ['890100000001', 'Gold', '22K', '8.42', 'Gold Ring', '2500', '', ''],
-  ['890100000002', 'Gold', '18K', '3.105', 'Diamond Pendant', '1800', '', '45000'],
-  ['890100000003', 'Gold', '22K', '12.6', 'Ruby Studded Bangle', '4200', '3500', ''],
-  ['890100000004', 'Silver', '925', '52.30', 'Silver Anklet Pair', '', '', ''],
+  ['Barcode', 'Metal', 'Purity', 'Net Weight (g)', 'Item Name', 'Making Charges (₹)', 'Stone Charges (₹)', 'Diamond Charges (₹)', 'Photo'],
+  ['890100000001', 'Gold', '22K', '8.42', 'Gold Ring', '2500', '', '', '(picture)'],
+  ['890100000002', 'Gold', '18K', '3.105', 'Diamond Pendant', '1800', '', '45000', '(picture)'],
+  ['890100000003', 'Gold', '22K', '12.6', 'Ruby Studded Bangle', '4200', '3500', '', ''],
+  ['890100000004', 'Silver', '925', '52.30', 'Silver Anklet Pair', '', '', '', ''],
 ];
 
-async function buildWorkbook(inventoryRows: OutRow[]): Promise<Blob> {
+interface WorkbookImage {
+  content: Blob;
+  contentType: string;
+  width: number;
+  height: number;
+  dpi: number;
+  anchor: { row: number; column: number };
+  offsetX?: number;
+  offsetY?: number;
+}
+
+async function buildWorkbook(inventoryRows: OutRow[], opts: { images?: WorkbookImage[]; computed?: boolean } = {}): Promise<Blob> {
   const { default: writeXlsxFile } = await import('write-excel-file/browser');
   const isTableHeader = (r: (string | null)[]) => r[0] === 'Column' || (r[0] === 'Barcode' && r[1] === 'Metal');
   const instructions = INSTRUCTIONS.map((r, i) =>
@@ -349,13 +410,21 @@ async function buildWorkbook(inventoryRows: OutRow[]): Promise<Blob> {
         : {
             value: v,
             type: String,
+            ...(v === PHOTO_HELP ? { wrap: true } : {}),
             ...(i === 0 ? { fontWeight: 'bold' as const, fontSize: 14 } : isTableHeader(r) ? { fontWeight: 'bold' as const } : {}),
           },
     ),
   );
+  const columns = opts.computed ? [...COLUMN_WIDTHS, { width: 16 }, { width: 20 }, { width: 16 }] : COLUMN_WIDTHS;
   const sheets = [
-    { sheet: 'Inventory', stickyRowsCount: 1, columns: COLUMN_WIDTHS, data: [headerRow(), ...inventoryRows] },
-    { sheet: 'Instructions', columns: [{ width: 18 }, { width: 12 }, { width: 90 }], data: instructions },
+    {
+      sheet: 'Inventory',
+      stickyRowsCount: 1,
+      columns,
+      data: [headerRow(!!opts.computed), ...inventoryRows],
+      ...(opts.images?.length ? { images: opts.images } : {}),
+    },
+    { sheet: 'Instructions', columns: [{ width: 20 }, { width: 12 }, { width: 90 }], data: instructions },
   ];
   // The library's overloads don't narrow our literal cell objects; the shapes match its Sheet type.
   return writeXlsxFile(sheets as unknown as Parameters<typeof writeXlsxFile>[0] & unknown[]).toBlob();
@@ -376,11 +445,65 @@ export async function downloadInventoryTemplate(): Promise<void> {
   saveBlob(await buildInventoryTemplate(), 'GoldCalc-inventory-template.xlsx');
 }
 
-/** Current items in the same layout, so the sheet can be edited and re-uploaded. */
-export function buildInventoryExport(items: ItemDraft[]): Promise<Blob> {
-  return buildWorkbook(items.map((i) => itemRow(i)));
+export interface ExportItem extends ItemDraft {
+  id?: string;
+  hasPhoto?: boolean;
 }
 
-export async function exportInventoryWorkbook(items: ItemDraft[]): Promise<void> {
-  saveBlob(await buildInventoryExport(items), `GoldCalc-items-${new Date().toISOString().slice(0, 10)}.xlsx`);
+export interface ExportOptions {
+  /** Today's valuation, for the reference "Today" columns. */
+  todayValue?: (item: ExportItem) => { ratePerGram: number; value: number; total: number } | undefined;
+  /** Loads an item's photo so it can be embedded on its row. */
+  photoOf?: (item: ExportItem) => Promise<Blob | undefined>;
+}
+
+/** Current items in the same layout (plus photos and today's values), ready to edit and re-upload. */
+export async function buildInventoryExport(items: ExportItem[], opts: ExportOptions = {}): Promise<Blob> {
+  const images: WorkbookImage[] = [];
+  const rows: OutRow[] = [];
+  for (const [index, item] of items.entries()) {
+    const row = itemRow(item);
+    if (opts.todayValue) {
+      const v = opts.todayValue(item);
+      row.push(
+        v ? { type: Number, value: v.ratePerGram, format: v.ratePerGram >= 1000 ? RUPEES : '#,##0.00' } : null,
+        v ? { type: Number, value: v.value, format: RUPEES } : null,
+        v ? { type: Number, value: v.total, format: RUPEES } : null,
+      );
+    }
+    if (item.hasPhoto && opts.photoOf) {
+      const thumb = await photoThumb(await opts.photoOf(item).catch(() => undefined)).catch(() => undefined);
+      if (thumb) {
+        images.push({
+          content: thumb.blob,
+          contentType: 'image/jpeg',
+          width: thumb.width,
+          height: thumb.height,
+          dpi: 96,
+          anchor: { row: index + 2, column: PHOTO_COL },
+          offsetX: 4,
+          offsetY: 4,
+        });
+        // Row tall enough for the picture (height is in points).
+        row[0] = { ...row[0], height: Math.ceil(((PHOTO_PX + 8) * 72) / 96) };
+      }
+    }
+    rows.push(row);
+  }
+  return buildWorkbook(rows, { images, computed: !!opts.todayValue });
+}
+
+async function photoThumb(blob: Blob | undefined): Promise<{ blob: Blob; width: number; height: number } | undefined> {
+  if (!blob) return undefined;
+  const { compressImage } = await import('@/lib/image');
+  const small = await compressImage(blob, 240, 0.8);
+  const bmp = await createImageBitmap(small);
+  const scale = PHOTO_PX / Math.max(bmp.width, bmp.height);
+  const size = { width: Math.round(bmp.width * scale), height: Math.round(bmp.height * scale) };
+  bmp.close();
+  return { blob: small, ...size };
+}
+
+export async function exportInventoryWorkbook(items: ExportItem[], opts?: ExportOptions): Promise<void> {
+  saveBlob(await buildInventoryExport(items, opts), `GoldCalc-items-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
