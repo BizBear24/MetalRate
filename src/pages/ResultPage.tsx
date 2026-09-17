@@ -8,14 +8,15 @@ import { CHARGE_LABELS, chargeLines, type Valuation } from '@/features/calculato
 import { gstLines, type TaxLine } from '@/features/estimate/buildEstimate';
 import { useSettings } from '@/hooks/useSettings';
 import { CHARGE_FIELDS, type ItemCharges } from '@/types';
-import { formatGrams, formatINR, formatRate, maskBarcode, timeAgo } from '@/lib/format';
+import { formatDateTime, formatGrams, formatINR, formatRate, timeAgo } from '@/lib/format';
+import { itemsRepo } from '@/services/storage/itemsRepo';
 import { useNow } from '@/hooks/useNow';
 import { Page } from '@/components/Layout';
 import { Button, IconButton } from '@/components/Button';
 import { CountUp } from '@/components/CountUp';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useToast } from '@/components/Toast';
-import { CloseIcon, EditIcon, OfflineIcon, PlusIcon, ReceiptIcon, RefreshIcon, ScanIcon, ShareIcon } from '@/components/Icons';
+import { CloseIcon, EditIcon, ImageIcon, OfflineIcon, PlusIcon, ReceiptIcon, RefreshIcon, ScanIcon, ShareIcon } from '@/components/Icons';
 import { estimateStore } from '@/features/estimate/estimateStore';
 import { useEstimateDraft } from '@/features/estimate/useEstimateDraft';
 import type { ResolutionSource } from '@/types';
@@ -75,6 +76,7 @@ export function ResultPage() {
   const updated = price.price ? timeAgo(price.price.timestamp, now) : '—';
   const stale = price.status === 'offline' || price.status === 'delayed';
   const hasCharges = chargeLines(item).length > 0;
+  const saved = item.itemId ? itemsRepo.get(item.itemId) : undefined;
   const taxes = valuation ? gstLines(valuation.total, settings.estimate.gstPct, settings.estimate.defaultGstMode) : [];
   const gst = taxes.reduce((sum, t) => sum + t.amount, 0);
   const grandTotal = valuation ? valuation.total + gst : 0;
@@ -122,7 +124,20 @@ export function ResultPage() {
 
       {/* Identity */}
       <section className="text-center">
-        {item.hasPhoto && item.itemId && <HeroPhoto itemId={item.itemId} alt={item.name || `${metal} item`} />}
+        {item.hasPhoto && item.itemId ? (
+          <HeroPhoto itemId={item.itemId} alt={item.name || `${metal} item`} />
+        ) : (
+          item.itemId && (
+            <button
+              type="button"
+              onClick={() => navigate(`/items/${item.itemId}/edit`, { params: { then: 'result' } })}
+              className="pressable mx-auto mb-5 flex size-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-[28px] border border-dashed border-line-strong text-faint hover:border-gold/60 hover:text-gold"
+            >
+              <ImageIcon size={30} />
+              <span className="text-xs font-medium">Add photo</span>
+            </button>
+          )
+        )}
         <div className="inline-flex items-center gap-2.5">
           <span className={`text-[0.72rem] font-bold tracking-[0.32em] uppercase ${item.metal === 'gold' ? 'gold-text' : 'text-ink/80'}`}>
             {metal}
@@ -131,7 +146,7 @@ export function ResultPage() {
           <span className="text-[0.72rem] font-bold tracking-[0.2em] text-champagne">{item.purity}</span>
         </div>
         {item.name && <h1 className="mt-2 font-display text-[1.6rem] leading-tight font-medium">{item.name}</h1>}
-        <p className="num mt-1 text-xs tracking-wider text-faint">{maskBarcode(item.barcode)}</p>
+        <p className="num mt-1 text-xs tracking-wider text-muted">{item.barcode}</p>
 
         <div className="mt-7 flex items-end justify-center gap-5">
           <Metric label="Weight" value={formatGrams(item.weightGrams)} />
@@ -175,12 +190,22 @@ export function ResultPage() {
       )}
 
       {/* Details */}
-      <dl className="mt-7 divide-y divide-line rounded-2xl border border-line bg-surface/50 px-5">
-        <Row k="Weight" v={formatGrams(item.weightGrams)} />
-        <Row k="Purity" v={formatPurity(item.metal, item.purity)} />
+      <h2 className="eyebrow mt-7 mb-2 px-1">Item details</h2>
+      <dl className="divide-y divide-line rounded-2xl border border-line bg-surface/50 px-5">
+        <Row k="Item name" v={item.name || '—'} />
+        <Row k="Barcode" v={<span className="tracking-wider">{item.barcode}</span>} />
         <Row k="Metal" v={metal} />
-        <Row k="Rate" v={valuation ? `${formatRate(valuation.ratePerGram)}/g` : '—'} />
+        <Row k="Purity" v={formatPurity(item.metal, item.purity)} />
+        <Row k="Net weight" v={formatGrams(item.weightGrams)} />
+        <Row k={`${item.purity} rate`} v={valuation ? `${formatRate(valuation.ratePerGram)}/g` : '—'} />
+        {CHARGE_FIELDS.map((f) => (
+          <Row key={f} k={CHARGE_LABELS[f]} v={item[f] ? formatINR(item[f]!) : 'Not applicable'} />
+        ))}
+        <Row k="Photo" v={item.hasPhoto ? 'Saved' : 'None'} />
+        <Row k="Weight from" v={item.source === 'database' ? 'Saved item' : 'Barcode'} />
         {adjustmentPct !== 0 && <Row k="Market adjustment" v={`${adjustmentPct > 0 ? '+' : ''}${adjustmentPct}%`} />}
+        {saved && <Row k="Added on" v={formatDateTime(saved.createdAt)} />}
+        {saved && saved.updatedAt !== saved.createdAt && <Row k="Last updated" v={formatDateTime(saved.updatedAt)} />}
       </dl>
       <p className="mt-3 text-center text-[0.7rem] leading-relaxed text-faint">
         {hasCharges
@@ -336,9 +361,9 @@ function BreakdownRow({ label, value, rule, strong, muted }: { label: ReactNode;
 
 function Row({ k, v }: { k: string; v: ReactNode }) {
   return (
-    <div className="flex items-center justify-between py-3.5 text-sm">
-      <dt className="text-muted">{k}</dt>
-      <dd className="num font-medium text-ink">{v}</dd>
+    <div className="flex items-baseline justify-between gap-4 py-3.5 text-sm">
+      <dt className="shrink-0 text-muted">{k}</dt>
+      <dd className="num min-w-0 text-right font-medium break-words text-ink">{v}</dd>
     </div>
   );
 }
