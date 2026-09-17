@@ -1,5 +1,7 @@
-import type { ItemDraft, Metal } from '@/types';
+import { CHARGE_FIELDS, type ChargeField, type ItemCharges, type ItemDraft, type Metal } from '@/types';
 import { normalizePurity } from '@/features/calculator/purity';
+import { CHARGE_LABELS, normalizeCharge } from '@/features/calculator/calculate';
+import { parseRupees } from '@/lib/money';
 
 /**
  * Spreadsheet import/export of the item list (Excel .xlsx or CSV).
@@ -24,7 +26,7 @@ export interface ParsedInventory {
   hasHeader: boolean;
 }
 
-type Field = 'barcode' | 'metal' | 'purity' | 'weight' | 'name';
+type Field = 'barcode' | 'metal' | 'purity' | 'weight' | 'name' | ChargeField;
 
 export const TEMPLATE_HEADERS: Record<Field, string> = {
   barcode: 'Barcode',
@@ -32,8 +34,11 @@ export const TEMPLATE_HEADERS: Record<Field, string> = {
   purity: 'Purity',
   weight: 'Net Weight (g)',
   name: 'Item Name',
+  makingCharges: 'Making Charges (₹)',
+  stoneCharges: 'Stone Charges (₹)',
+  diamondCharges: 'Diamond Charges (₹)',
 };
-const FIELD_ORDER: Field[] = ['barcode', 'metal', 'purity', 'weight', 'name'];
+const FIELD_ORDER: Field[] = ['barcode', 'metal', 'purity', 'weight', 'name', ...CHARGE_FIELDS];
 
 // Header aliases after normalisation (lowercase, letters/digits only). Earlier = preferred.
 const HEADER_ALIASES: Record<Field, string[]> = {
@@ -42,6 +47,9 @@ const HEADER_ALIASES: Record<Field, string[]> = {
   purity: ['purity', 'karat', 'carat', 'kt', 'ct', 'fineness', 'touch'],
   weight: ['netweightg', 'netweight', 'netwt', 'netwtg', 'weightg', 'weight', 'weightgrams', 'grams', 'gram', 'gms', 'gm', 'wt', 'grossweightg', 'grossweight', 'grosswt'],
   name: ['itemname', 'name', 'item', 'description', 'productname', 'product', 'design'],
+  makingCharges: ['makingcharges', 'makingchargesrs', 'makingchargesinr', 'makingcharge', 'making', 'mc', 'labourcharges', 'labour', 'laborcharges', 'labor'],
+  stoneCharges: ['stonecharges', 'stonechargesrs', 'stonechargesinr', 'stonecharge', 'stonevalue', 'stoneamount', 'stoneprice'],
+  diamondCharges: ['diamondcharges', 'diamondchargesrs', 'diamondchargesinr', 'diamondcharge', 'diamondvalue', 'diamondamount', 'diamondprice'],
 };
 
 const MAX_WEIGHT = 100000;
@@ -174,13 +182,21 @@ export function parseInventoryRows(rows: RawCell[][]): ParsedInventory {
     else if (weight <= 0) problems.push('weight must be greater than 0 g');
     else if (weight > MAX_WEIGHT) problems.push('weight looks too large');
 
+    const charges: ItemCharges = {};
+    for (const f of CHARGE_FIELDS) {
+      const cell = get(row, f);
+      const amount = parseRupees(cell);
+      if (amount === null) problems.push(`${CHARGE_LABELS[f].toLowerCase()} “${cellText(cell)}” isn’t a rupee amount`);
+      else charges[f] = normalizeCharge(amount);
+    }
+
     if (problems.length || !metal || !purity || weight === null) {
       result.errors.push({ row: excelRow, message: capitalize(problems.join('; ')) });
       continue;
     }
 
     const name = cellText(get(row, 'name')).slice(0, 60) || undefined;
-    const draft: ItemDraft = { barcode, metal, purity, weightGrams: Math.round(weight * 1000) / 1000, name };
+    const draft: ItemDraft = { barcode, metal, purity, weightGrams: Math.round(weight * 1000) / 1000, name, ...charges };
     const prev = byBarcode.get(barcode);
     if (prev) result.warnings.push({ row: excelRow, message: `Barcode ${barcode} also on row ${prev.row} — this row is used.` });
     byBarcode.set(barcode, { draft, row: excelRow });
@@ -276,7 +292,8 @@ const HEADER_STYLE = {
   borderColor: '#9C7A3C',
 };
 const TEXT = '@';
-const COLUMN_WIDTHS = [{ width: 22 }, { width: 10 }, { width: 10 }, { width: 16 }, { width: 28 }];
+const RUPEES = '#,##0';
+const COLUMN_WIDTHS = [{ width: 22 }, { width: 10 }, { width: 10 }, { width: 16 }, { width: 28 }, { width: 20 }, { width: 19 }, { width: 21 }];
 
 function headerRow() {
   return FIELD_ORDER.map((f) => ({ value: TEMPLATE_HEADERS[f], ...HEADER_STYLE }));
@@ -292,6 +309,7 @@ function itemRow(i?: ItemDraft): OutRow {
     { type: String, value: i?.purity ?? '', format: TEXT },
     i ? { type: Number, value: i.weightGrams, format: '0.00#' } : { type: Number, format: '0.00#' },
     { type: String, value: i?.name ?? '', format: TEXT },
+    ...CHARGE_FIELDS.map((f) => (i?.[f] ? { type: Number, value: i[f], format: RUPEES } : { type: Number, format: RUPEES })),
   ];
 }
 
@@ -307,21 +325,32 @@ const INSTRUCTIONS: (string | null)[][] = [
   ['Purity', 'Yes', 'Gold: 24K, 22K, 18K, 14K (916, 750, 585 also accepted). Silver: 999 or 925.'],
   ['Net Weight (g)', 'Yes', 'Metal weight in grams, e.g. 8.42. Must be greater than 0.'],
   ['Item Name', 'No', 'Optional, e.g. Gold Ring'],
+  ['Making Charges (₹)', 'No', 'Fixed rupee amount for this item, added on top of the metal value. Leave blank if none.'],
+  ['Stone Charges (₹)', 'No', 'Fixed rupee amount for stones. Leave blank if the item has no stones.'],
+  ['Diamond Charges (₹)', 'No', 'Fixed rupee amount for diamonds. Leave blank if the item has no diamonds.'],
+  [null],
+  ['Total shown in GoldCalc = Net Weight × live rate for the purity + Making + Stone + Diamond charges (GST not included).'],
   [null],
   ['Example rows (do not paste these into your inventory):'],
-  ['Barcode', 'Metal', 'Purity', 'Net Weight (g)', 'Item Name'],
-  ['890100000001', 'Gold', '22K', '8.42', 'Gold Ring'],
-  ['890100000002', 'Gold', '18K', '3.105', 'Diamond Pendant (metal only)'],
-  ['890100000003', 'Silver', '925', '52.30', 'Silver Anklet Pair'],
+  ['Barcode', 'Metal', 'Purity', 'Net Weight (g)', 'Item Name', 'Making Charges (₹)', 'Stone Charges (₹)', 'Diamond Charges (₹)'],
+  ['890100000001', 'Gold', '22K', '8.42', 'Gold Ring', '2500', '', ''],
+  ['890100000002', 'Gold', '18K', '3.105', 'Diamond Pendant', '1800', '', '45000'],
+  ['890100000003', 'Gold', '22K', '12.6', 'Ruby Studded Bangle', '4200', '3500', ''],
+  ['890100000004', 'Silver', '925', '52.30', 'Silver Anklet Pair', '', '', ''],
 ];
 
 async function buildWorkbook(inventoryRows: OutRow[]): Promise<Blob> {
   const { default: writeXlsxFile } = await import('write-excel-file/browser');
+  const isTableHeader = (r: (string | null)[]) => r[0] === 'Column' || (r[0] === 'Barcode' && r[1] === 'Metal');
   const instructions = INSTRUCTIONS.map((r, i) =>
     r.map((v) =>
       v == null
         ? null
-        : { value: v, type: String, ...(i === 0 ? { fontWeight: 'bold' as const, fontSize: 14 } : i === 5 || i === 13 ? { fontWeight: 'bold' as const } : {}) },
+        : {
+            value: v,
+            type: String,
+            ...(i === 0 ? { fontWeight: 'bold' as const, fontSize: 14 } : isTableHeader(r) ? { fontWeight: 'bold' as const } : {}),
+          },
     ),
   );
   const sheets = [

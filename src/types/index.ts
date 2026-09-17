@@ -4,7 +4,20 @@ export type GoldPurity = '24K' | '22K' | '18K' | '14K';
 export type SilverPurity = '999' | '925';
 export type Purity = GoldPurity | SilverPurity;
 
-export interface Item {
+/**
+ * Fixed rupee amounts added on top of the metal value. They don't change with the
+ * metal rate. Omitted (or 0) when a charge doesn't apply to the item.
+ */
+export interface ItemCharges {
+  makingCharges?: number;
+  stoneCharges?: number;
+  diamondCharges?: number;
+}
+
+export const CHARGE_FIELDS = ['makingCharges', 'stoneCharges', 'diamondCharges'] as const;
+export type ChargeField = (typeof CHARGE_FIELDS)[number];
+
+export interface Item extends ItemCharges {
   id: string;
   barcode: string;
   name?: string;
@@ -17,7 +30,7 @@ export interface Item {
   updatedAt: string;
 }
 
-export type ItemDraft = Pick<Item, 'barcode' | 'name' | 'metal' | 'purity' | 'weightGrams'>;
+export type ItemDraft = Pick<Item, 'barcode' | 'name' | 'metal' | 'purity' | 'weightGrams'> & ItemCharges;
 
 /** Price of the pure metal (24K gold / fine silver) in INR per gram. */
 export interface MetalPrice {
@@ -45,7 +58,7 @@ export type PriceStatus =
 /** How a scanned code was resolved to an item. */
 export type ResolutionSource = 'encoded' | 'weight-embedded' | 'database';
 
-export interface ResolvedItem {
+export interface ResolvedItem extends ItemCharges {
   barcode: string;
   name?: string;
   metal: Metal;

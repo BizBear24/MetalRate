@@ -1,8 +1,9 @@
 # GoldCalc
 
-**Scan → weight → live price → value.** A small web app for gold and silver shops. Scan an item's barcode and GoldCalc shows its estimated metal value at the current market price.
+**Scan → weight → live price → value.** A small web app for gold and silver shops. Scan an item's barcode and GoldCalc shows its metal value at the current market price, plus any fixed charges saved for that item.
 
-> GoldCalc shows the **estimated metal value** only: weight × rate for the item's purity. It does not include making charges, GST, wastage, stones or dealer margin.
+> **Estimated total = weight × live rate for the purity + making charges + stone charges + diamond charges.**
+> The three charges are optional fixed rupee amounts saved on each item. They don't change with the metal rate, and any that don't apply are left blank. GST is not included.
 
 ## Run it
 
@@ -47,7 +48,8 @@ MarketQuote (USD / troy oz)
   → INR / gram (pure metal)
   → purity factor (22K = 22/24, 925 = 0.925, …)       src/features/calculator
   → rate rounded as shown (whole ₹ at ₹1,000+/g, otherwise paise)
-  → value = weight × rate
+  → metal value = weight × rate
+  → total = metal value + making + stone + diamond charges (fixed ₹ per item, blank = not applicable)
 ```
 
 To add another data source, implement `PriceProvider` (`getGoldPrice`, `getSilverPrice`) and register it in `src/services/price/providers/index.ts`.
@@ -86,10 +88,13 @@ You can load your whole stock list at once instead of adding items one by one.
 1. Go to **Items → Import** (or **Settings → Data → Download Excel template**) and download `GoldCalc-inventory-template.xlsx`.
 2. Fill in the **Inventory** sheet, one row per item:
 
-   | Barcode | Metal | Purity | Net Weight (g) | Item Name |
-   |---|---|---|---|---|
-   | 000451 | Gold | 22K | 12.35 | Gold Bangle |
-   | 000453 | Silver | 925 | 48.10 | Anklet Pair |
+   | Barcode | Metal | Purity | Net Weight (g) | Item Name | Making Charges (₹) | Stone Charges (₹) | Diamond Charges (₹) |
+   |---|---|---|---|---|---|---|---|
+   | 000451 | Gold | 22K | 12.35 | Gold Bangle | 4200 | 3500 | |
+   | 000452 | Gold | 18K | 3.105 | Diamond Pendant | 1800 | | 45000 |
+   | 000453 | Silver | 925 | 48.10 | Anklet Pair | | | |
+
+   The three charge columns are optional. Leave a cell blank when that charge doesn't apply. Amounts like `2,500`, `₹2,500` or `Rs. 2500/-` are all accepted. Columns named *Labour*, *MC*, *Stone Value* or *Diamond Amount* are also recognised.
 
 3. Upload the file (`.xlsx` or `.csv`). A preview shows how many items are new, how many will be updated and which rows will be skipped, with the row number and reason for each. Nothing is saved until you press **Import**.
 

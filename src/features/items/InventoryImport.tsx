@@ -75,7 +75,8 @@ export function InventoryImport({ open, onClose }: { open: boolean; onClose: () 
       {state.step === 'pick' ? (
         <>
           <p className="mt-1.5 text-sm leading-relaxed text-muted">
-            Upload an Excel (.xlsx) or CSV file with one row per item: barcode, metal, purity and net weight.
+            Upload an Excel (.xlsx) or CSV file with one row per item: barcode, metal, purity and net weight, plus optional
+            making, stone and diamond charges.
           </p>
 
           <ol className="mt-5 space-y-3 text-sm">

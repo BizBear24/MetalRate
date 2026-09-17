@@ -1,4 +1,5 @@
 import type { BarcodeSettings, Item, Resolution } from '@/types';
+import { normalizeCharges } from '@/features/calculator/calculate';
 import { parseBarcode } from './parser';
 
 export interface ItemLookup {
@@ -11,6 +12,7 @@ export interface ItemLookup {
  *   2. Weight-embedded numeric code; metal/purity from the item saved under its item code
  *   3. Local item database by exact barcode
  *   4. Not found
+ * Fixed charges (making / stone / diamond) always come from the matching saved item.
  */
 export function resolveBarcode(raw: string, settings: BarcodeSettings, db: ItemLookup): Resolution {
   const barcode = raw.trim();
@@ -23,6 +25,7 @@ export function resolveBarcode(raw: string, settings: BarcodeSettings, db: ItemL
       item: {
         barcode,
         name: saved?.name,
+        ...(saved ? normalizeCharges(saved) : {}),
         metal: parsed.metal,
         purity: parsed.purity,
         weightGrams: parsed.weightGrams,
@@ -40,6 +43,7 @@ export function resolveBarcode(raw: string, settings: BarcodeSettings, db: ItemL
         item: {
           barcode,
           name: base.name,
+          ...normalizeCharges(base),
           metal: base.metal,
           purity: base.purity,
           weightGrams: parsed.weightGrams,
@@ -62,6 +66,7 @@ export function resolveBarcode(raw: string, settings: BarcodeSettings, db: ItemL
       item: {
         barcode,
         name: saved.name,
+        ...normalizeCharges(saved),
         metal: saved.metal,
         purity: saved.purity,
         weightGrams: saved.weightGrams,

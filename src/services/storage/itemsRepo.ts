@@ -1,6 +1,7 @@
-import type { Item, ItemDraft } from '@/types';
+import type { Item, ItemCharges, ItemDraft } from '@/types';
 import { newId, readJSON, removeKey, writeJSON } from '@/lib/storage';
 import { isValidPurity } from '@/features/calculator/purity';
+import { normalizeCharge } from '@/features/calculator/calculate';
 import { DEMO_ITEMS } from './demoData';
 
 const ITEMS_KEY = 'items';
@@ -34,6 +35,15 @@ function commit(next: Item[]): void {
   cache = next;
   if (!writeJSON(ITEMS_KEY, next)) throw new Error('Could not save to this device’s storage.');
   listeners.forEach((l) => l());
+}
+
+/** All three charge fields, explicitly undefined when they don't apply (so edits can clear them). */
+function chargesOf(c: ItemCharges): ItemCharges {
+  return {
+    makingCharges: normalizeCharge(c.makingCharges),
+    stoneCharges: normalizeCharge(c.stoneCharges),
+    diamondCharges: normalizeCharge(c.diamondCharges),
+  };
 }
 
 export function normalizeBarcode(code: string): string {
@@ -73,6 +83,7 @@ export const itemsRepo = {
       metal: draft.metal,
       purity: draft.purity,
       weightGrams: Math.round(draft.weightGrams * 1000) / 1000,
+      ...chargesOf(draft),
     };
 
     if (id) {
@@ -131,6 +142,7 @@ export const itemsRepo = {
         metal: d.metal,
         purity: d.purity,
         weightGrams: Math.round(d.weightGrams * 1000) / 1000,
+        ...chargesOf(d),
         createdAt: prev?.createdAt ?? now,
         updatedAt: now,
       });
@@ -179,6 +191,7 @@ export const itemsRepo = {
         metal: r.metal,
         purity: r.purity,
         weightGrams: weight,
+        ...chargesOf(r),
         isDemo: r.isDemo === true || undefined,
         createdAt: prev?.createdAt ?? (typeof r.createdAt === 'string' ? r.createdAt : now),
         updatedAt: now,

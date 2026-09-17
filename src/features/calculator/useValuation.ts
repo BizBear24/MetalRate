@@ -21,7 +21,7 @@ export function useValuation(code: string) {
   const valuation = useMemo(
     () =>
       item && price.price
-        ? valuate(price.price.pricePerGramINR, item.purity, item.weightGrams, settings.marketAdjustmentPct)
+        ? valuate(price.price.pricePerGramINR, item.purity, item.weightGrams, settings.marketAdjustmentPct, item)
         : null,
     [item, price.price, settings.marketAdjustmentPct],
   );

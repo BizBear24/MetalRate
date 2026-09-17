@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import type { Item } from '@/types';
 import { useItems } from '@/hooks/useItems';
 import { itemsRepo } from '@/services/storage/itemsRepo';
-import { formatGrams, maskBarcode } from '@/lib/format';
+import { formatGrams, formatINR, maskBarcode } from '@/lib/format';
+import { chargeLines } from '@/features/calculator/calculate';
 import { metalLabel } from '@/features/calculator/purity';
 import { navigate } from '@/lib/router';
 import { Page, PageHeader } from '@/components/Layout';
@@ -11,6 +12,8 @@ import { ConfirmSheet } from '@/components/Sheet';
 import { useToast } from '@/components/Toast';
 import { EditIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon } from '@/components/Icons';
 import { InventoryImport } from '@/features/items/InventoryImport';
+
+const chargesTotal = (item: Item) => chargeLines(item).reduce((sum, c) => sum + c.amount, 0);
 
 export function ItemsPage() {
   const items = useItems();
@@ -89,10 +92,11 @@ export function ItemsPage() {
                     )}
                   </div>
                   <div className="num mt-0.5 flex gap-2 text-[0.8rem] text-muted">
-                    <span>
+                    <span className="shrink-0">
                       {item.purity} · {formatGrams(item.weightGrams)}
                     </span>
-                    <span className="tracking-wider text-faint">{maskBarcode(item.barcode)}</span>
+                    {chargesTotal(item) > 0 && <span className="shrink-0 text-champagne">+{formatINR(chargesTotal(item))}</span>}
+                    <span className="truncate tracking-wider text-faint">{maskBarcode(item.barcode)}</span>
                   </div>
                 </div>
               </button>

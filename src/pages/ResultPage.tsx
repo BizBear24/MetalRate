@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useRoute, navigate, goBack } from '@/lib/router';
 import { useValuation } from '@/features/calculator/useValuation';
 import { formatPurity, metalLabel } from '@/features/calculator/purity';
+import { chargeLines, type Valuation } from '@/features/calculator/calculate';
 import { formatGrams, formatINR, formatRate, maskBarcode, timeAgo } from '@/lib/format';
 import { useNow } from '@/hooks/useNow';
 import { Page } from '@/components/Layout';
@@ -59,17 +60,20 @@ export function ResultPage() {
   const metal = metalLabel(item.metal);
   const updated = price.price ? timeAgo(price.price.timestamp, now) : '—';
   const stale = price.status === 'offline' || price.status === 'delayed';
+  const hasCharges = chargeLines(item).length > 0;
 
   const share = async () => {
     if (!valuation) return;
     const text = [
-      `GoldCalc — Estimated Metal Value`,
+      hasCharges ? `GoldCalc — Estimated Total` : `GoldCalc — Estimated Metal Value`,
       item.name,
       `${metal} ${item.purity} · ${formatGrams(item.weightGrams)}`,
       `Rate ${formatRate(valuation.ratePerGram)}/g`,
-      `Value ${formatINR(valuation.value)}`,
+      `Metal value ${formatINR(valuation.value)}`,
+      ...valuation.charges.map((c) => `+ ${c.label} ${formatINR(c.amount)}`),
+      hasCharges ? `Total ${formatINR(valuation.total)}` : null,
       `Price ${price.status === 'live' ? 'live' : 'last known'}, updated ${updated}`,
-      `Excludes making charges, GST, wastage & stones.`,
+      `Excludes GST.`,
     ]
       .filter(Boolean)
       .join('\n');
@@ -124,21 +128,22 @@ export function ResultPage() {
 
       {/* Hero value */}
       <section className="text-center" aria-live="polite">
-        <div className="eyebrow">Estimated Value</div>
+        <div className="eyebrow">{hasCharges ? 'Estimated Total' : 'Estimated Value'}</div>
         {valuation ? (
           <div className="num gold-text mt-3 text-[clamp(3rem,15vw,4.6rem)] leading-none font-light">
-            <CountUp value={valuation.value} format={formatINR} />
+            <CountUp value={valuation.total} format={formatINR} />
           </div>
         ) : price.status === 'loading' ? (
           <div className="skeleton mx-auto mt-3 h-16 w-64" aria-label="Loading price" />
         ) : (
           <PriceUnavailable onRetry={price.refresh} />
         )}
-        {valuation && (
+        {valuation && !hasCharges && (
           <p className="num mt-3 text-[0.8rem] text-muted">
             {formatGrams(item.weightGrams)} × {formatRate(valuation.ratePerGram)} = {formatINR(valuation.value)}
           </p>
         )}
+        {valuation && hasCharges && <Breakdown valuation={valuation} weightGrams={item.weightGrams} />}
       </section>
 
       <div className="hairline my-8" />
@@ -162,7 +167,9 @@ export function ResultPage() {
         {adjustmentPct !== 0 && <Row k="Market adjustment" v={`${adjustmentPct > 0 ? '+' : ''}${adjustmentPct}%`} />}
       </dl>
       <p className="mt-3 text-center text-[0.7rem] leading-relaxed text-faint">
-        Metal value only. Excludes making charges, GST, wastage, stones and margins.
+        {hasCharges
+          ? 'Metal value at the current rate plus this item’s fixed charges. Excludes GST.'
+          : 'Metal value only — no making, stone or diamond charges saved for this item. Excludes GST.'}
       </p>
 
       <div className="mt-auto grid gap-3 pt-8">
@@ -214,6 +221,32 @@ function Metric({ label, value, suffix, loading }: { label: string; value: strin
         {suffix && <span className="ml-0.5 text-sm font-normal text-muted">{suffix}</span>}
       </span>
     </div>
+  );
+}
+
+function Breakdown({ valuation, weightGrams }: { valuation: Valuation; weightGrams: number }) {
+  return (
+    <dl className="num mx-auto mt-6 max-w-sm space-y-2 text-left text-sm">
+      <div className="flex items-baseline justify-between gap-3">
+        <dt className="text-muted">
+          Metal value
+          <span className="ml-1.5 text-xs text-faint">
+            {formatGrams(weightGrams)} × {formatRate(valuation.ratePerGram)}
+          </span>
+        </dt>
+        <dd className="font-medium text-ink">{formatINR(valuation.value)}</dd>
+      </div>
+      {valuation.charges.map((c) => (
+        <div key={c.field} className="flex items-baseline justify-between gap-3">
+          <dt className="text-muted">+ {c.label}</dt>
+          <dd className="font-medium text-ink">{formatINR(c.amount)}</dd>
+        </div>
+      ))}
+      <div className="flex items-baseline justify-between gap-3 border-t border-line-strong pt-2">
+        <dt className="font-semibold text-ink">Total</dt>
+        <dd className="font-semibold text-gold">{formatINR(valuation.total)}</dd>
+      </div>
+    </dl>
   );
 }
 

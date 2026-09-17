@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import type { Metal, Purity } from '@/types';
+import { CHARGE_FIELDS, type ChargeField, type ItemCharges, type Metal, type Purity } from '@/types';
+import { parseRupees } from '@/lib/money';
 import { itemsRepo } from '@/services/storage/itemsRepo';
 import { defaultPurity, isValidPurity, puritiesFor } from '@/features/calculator/purity';
 import { ScannerView } from '@/features/scanner/ScannerView';
@@ -11,7 +12,13 @@ import { ConfirmSheet } from '@/components/Sheet';
 import { useToast } from '@/components/Toast';
 import { ScanIcon, TrashIcon } from '@/components/Icons';
 
-type Errors = Partial<Record<'barcode' | 'weight' | 'purity' | 'form', string>>;
+type Errors = Partial<Record<'barcode' | 'weight' | 'purity' | 'form' | ChargeField, string>>;
+
+const CHARGE_INPUTS: { field: ChargeField; label: string }[] = [
+  { field: 'makingCharges', label: 'Making' },
+  { field: 'stoneCharges', label: 'Stone' },
+  { field: 'diamondCharges', label: 'Diamond' },
+];
 
 const METALS = [
   { value: 'gold', label: 'Gold' },
@@ -31,6 +38,11 @@ export function ItemFormPage({ id }: { id?: string }) {
   const [purity, setPurity] = useState<Purity>(isValidPurity(initialMetal, initialPurity) ? initialPurity : defaultPurity(initialMetal));
   const [weight, setWeight] = useState(existing ? String(existing.weightGrams) : params.get('weight') ?? '');
   const [name, setName] = useState(existing?.name ?? '');
+  const [charges, setCharges] = useState<Record<ChargeField, string>>(() => {
+    const init = {} as Record<ChargeField, string>;
+    for (const f of CHARGE_FIELDS) init[f] = existing?.[f] ? String(existing[f]) : '';
+    return init;
+  });
   const [errors, setErrors] = useState<Errors>({});
   const [scanning, setScanning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -49,14 +61,23 @@ export function ItemFormPage({ id }: { id?: string }) {
     if (!isValidPurity(m, purity)) setPurity(defaultPurity(m));
   };
 
-  const validate = (): { ok: true; weight: number } | { ok: false; errors: Errors } => {
+  const validate = (): { ok: true; weight: number; charges: ItemCharges } | { ok: false; errors: Errors } => {
     const e: Errors = {};
     if (!barcode.trim()) e.barcode = 'Barcode is required.';
     const w = Number(weight.replace(',', '.'));
     if (!weight.trim() || !Number.isFinite(w) || w <= 0) e.weight = 'Please enter a weight greater than 0 grams.';
     else if (w > 100000) e.weight = 'That weight looks too large. Check the value in grams.';
     if (!isValidPurity(metal, purity)) e.purity = 'Choose a purity.';
-    return Object.keys(e).length ? { ok: false, errors: e } : { ok: true, weight: Math.round(w * 1000) / 1000 };
+    const parsedCharges: ItemCharges = {};
+    for (const f of CHARGE_FIELDS) {
+      const amount = parseRupees(charges[f]);
+      if (amount === null) e[f] = 'Enter an amount in rupees, or leave it blank.';
+      else if (amount !== undefined && amount > 10_00_00_000) e[f] = 'That amount looks too large.';
+      else parsedCharges[f] = amount;
+    }
+    return Object.keys(e).length
+      ? { ok: false, errors: e }
+      : { ok: true, weight: Math.round(w * 1000) / 1000, charges: parsedCharges };
   };
 
   const submit = (ev: FormEvent) => {
@@ -64,12 +85,12 @@ export function ItemFormPage({ id }: { id?: string }) {
     const v = validate();
     if (!v.ok) {
       setErrors(v.errors);
-      const first = v.errors.barcode ? 'barcode' : v.errors.weight ? 'weight' : null;
+      const first = v.errors.barcode ? 'barcode' : v.errors.weight ? 'weight' : CHARGE_FIELDS.find((f) => v.errors[f]);
       if (first) document.getElementById(first)?.focus();
       return;
     }
     try {
-      const saved = itemsRepo.save({ barcode, metal, purity, weightGrams: v.weight, name }, id);
+      const saved = itemsRepo.save({ barcode, metal, purity, weightGrams: v.weight, name, ...v.charges }, id);
       toast(existing ? 'Item updated' : 'Item added successfully');
       // From a scan: show the valuation next. Otherwise return to wherever we came from.
       const showResult = params.get('then') === 'result' && !(existing && existing.barcode === saved.barcode);
@@ -154,6 +175,46 @@ export function ItemFormPage({ id }: { id?: string }) {
             </div>
           ) : null}
         </div>
+
+        <fieldset>
+          <legend className="mb-2 flex w-full items-baseline justify-between">
+            <span className="eyebrow">Charges</span>
+            <span className="text-xs text-faint">optional · added on top of metal value</span>
+          </legend>
+          <div className="grid grid-cols-3 gap-2">
+            {CHARGE_INPUTS.map(({ field, label }) => (
+              <div key={field}>
+                <label htmlFor={field} className="mb-1.5 block text-xs font-medium text-muted">
+                  {label}
+                </label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted">₹</span>
+                  <input
+                    id={field}
+                    className="field num h-12 pr-2 pl-7 text-[0.95rem] font-medium"
+                    value={charges[field]}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^\d.,]/g, '');
+                      setCharges((c) => ({ ...c, [field]: value }));
+                      setErrors((x) => ({ ...x, [field]: undefined }));
+                    }}
+                    inputMode="decimal"
+                    placeholder="0"
+                    autoComplete="off"
+                    aria-invalid={!!errors[field]}
+                    aria-describedby={`${field}-err`}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          {CHARGE_INPUTS.map(({ field, label }) => (
+            <FieldError key={field} id={`${field}-err`}>
+              {errors[field] ? `${label}: ${errors[field]}` : undefined}
+            </FieldError>
+          ))}
+          <p className="mt-2 text-xs leading-relaxed text-faint">Leave blank if a charge doesn’t apply to this item.</p>
+        </fieldset>
 
         <div>
           <FieldLabel htmlFor="name" hint="optional">Item name</FieldLabel>
