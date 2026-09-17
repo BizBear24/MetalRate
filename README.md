@@ -59,7 +59,14 @@ To add another data source, implement `PriceProvider` (`getGoldPrice`, `getSilve
 - **LIVE**: fetched successfully in the last 3 minutes, and the market quote is less than 30 minutes old.
 - **DELAYED**: the fetch worked, but the quote is old (for example, the market is closed).
 - **OFFLINE**: the network or API failed. The app shows the **last known price** and when it was updated.
-- A cached price is never labelled LIVE. Prices refresh every 60 seconds while the app is visible.
+- A cached price is never labelled LIVE.
+
+### How prices stay current
+
+Phones and browsers freeze timers in background tabs, so a plain 60-second timer can leave an old price on screen. GoldCalc avoids that like this:
+- A watchdog checks every 5 seconds whether the last fetch is more than 60 seconds old. After a failure, it retries every 15 seconds.
+- Prices are re-fetched right away when you return to the app (tab focus, page shown again, device resume, back online), and on the first tap after more than a minute.
+- The result screen and the estimate page re-check prices when they open if the last check is older than 30 seconds. **Print** re-fetches first if needed.
 
 ### Limitations of the chosen API
 
@@ -106,9 +113,35 @@ How the import reads your sheet:
 - **Settings → Data → Export items to Excel** writes your current items in the same layout, so you can edit them in Excel and upload the file again.
 - Old `.xls` files aren't supported. Save them as `.xlsx` first.
 
+## Item photos
+
+In **Add / Edit Item**, tap **Take photo** to use the camera, or **Choose from gallery**. Photos are resized on the phone (longest side 1280 px, JPEG) to about 30–200 KB each. They're stored in the browser's IndexedDB, so they work offline. Photos appear in the Items list, on the scan screen, on the result screen (tap to enlarge) and on printed estimates.
+
+Photos stay on the device that took them. The JSON backup and the Excel export contain item data only, not photos.
+
+## Estimates
+
+Build a customer estimate from one or more items and print it or save it as a PDF.
+
+1. On a result screen, tap **Add to estimate**. You can also open the **Estimate** tab and use **Scan item** (the scanner stays open, so you can scan several pieces in a row) or **From items**.
+2. Add the customer's name and phone if you want them on the estimate.
+3. Tap **Print / Save PDF**. This opens the system print dialog, where you can choose a printer or **Save as PDF**. On phones, use the share / print option that appears.
+
+The printed A4 estimate shows:
+- your shop name, address, phone and GSTIN
+- the estimate number (`EST-0001`, …), the date and the customer
+- the rates applied, with a timestamp and whether they were live
+- each item with its photo, net weight, rate, metal value, making / stone / diamond charges and amount
+- the subtotal, GST, estimated total and the amount in words (Indian system)
+- a footer note and a signature line
+
+Set up your shop details under **Settings → Estimate**. There you can also set the GST % (default 3%; set 0 to leave GST out) and edit the footer note.
+
+Rates on an estimate stay live until you print. **New** clears the estimate and starts the next number.
+
 ## Data and offline use
 
-- Items and settings are stored in `localStorage` under the `goldcalc:` prefix. Settings → Data also has a full JSON backup and restore.
+- Items, settings and the current estimate are stored in `localStorage` under the `goldcalc:` prefix. Photos are stored in IndexedDB. Settings → Data also has a full JSON backup and restore.
 - **Demo items** (`890000000001`–`890000000003`) are marked "Demo". Remove them in **Settings → Data**, or set `VITE_SEED_DEMO_DATA=false` before deploying.
 - In production builds, a service worker (`public/sw.js`) caches the app shell, the bundles and the fonts, so the app opens without internet. Saved-item lookups work offline, and prices fall back to the last saved values, labelled OFFLINE.
 
@@ -120,12 +153,14 @@ src/
   services/
     barcode/             parser (encoded formats), resolver, camera scanner engine
     price/               provider interface, gold-api provider, FX, unit conversion, cache
-    storage/             items repository, settings, demo data
+    storage/             items repository, photo store (IndexedDB), settings, Excel import/export, demo data
   features/
-    calculator/          purity factors, valuation, useValuation hook
-    pricing/             polling price store + hooks
+    calculator/          purity factors, valuation + charges, useValuation hook
+    pricing/             auto-refreshing price store + hooks
     scanner/             ScannerView (camera UI)
-  pages/                 Home, Scan, Result, Items, Item form, Settings
+    items/               Excel import dialog, photo picker
+    estimate/            estimate draft, totals + amount in words, printable document
+  pages/                 Home, Scan, Result, Items, Item form, Estimate, Settings
   components/            Buttons, sheets, toasts, form controls, logo, icons
   lib/                   formatting (₹1,25,430), storage helpers, hash router
 ```

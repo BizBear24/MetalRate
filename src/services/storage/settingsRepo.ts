@@ -18,6 +18,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
       hasCheckDigit: true,
     },
   },
+  estimate: {
+    shopName: '',
+    address: '',
+    phone: '',
+    gstin: '',
+    gstPct: 3,
+    footerNote: 'This is an estimate, not a tax invoice. Final amount depends on the actual weight and the rate on the day of billing.',
+  },
 };
 
 export function loadSettings(): AppSettings {
@@ -29,6 +37,7 @@ export function loadSettings(): AppSettings {
       encoded: { ...DEFAULT_SETTINGS.barcode.encoded, ...s.barcode?.encoded },
       numeric: { ...DEFAULT_SETTINGS.barcode.numeric, ...s.barcode?.numeric },
     },
+    estimate: { ...DEFAULT_SETTINGS.estimate, ...s.estimate },
   };
 }
 

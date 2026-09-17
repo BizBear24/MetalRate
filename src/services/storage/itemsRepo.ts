@@ -3,6 +3,7 @@ import { newId, readJSON, removeKey, writeJSON } from '@/lib/storage';
 import { isValidPurity } from '@/features/calculator/purity';
 import { normalizeCharge } from '@/features/calculator/calculate';
 import { DEMO_ITEMS } from './demoData';
+import { photoStore } from './photoStore';
 
 const ITEMS_KEY = 'items';
 const SEEDED_KEY = 'demo-seeded';
@@ -100,17 +101,24 @@ export const itemsRepo = {
 
   remove(id: string): void {
     commit(load().filter((i) => i.id !== id));
+    void photoStore.remove(id);
+  },
+
+  setHasPhoto(id: string, hasPhoto: boolean): void {
+    commit(load().map((i) => (i.id === id ? { ...i, hasPhoto: hasPhoto || undefined } : i)));
   },
 
   removeDemo(): number {
     const items = load();
     const kept = items.filter((i) => !i.isDemo);
     commit(kept);
+    items.filter((i) => i.isDemo && i.hasPhoto).forEach((i) => void photoStore.remove(i.id));
     return items.length - kept.length;
   },
 
   clearAll(): void {
     commit([]);
+    void photoStore.clear();
   },
 
   export(): string {
@@ -143,6 +151,7 @@ export const itemsRepo = {
         purity: d.purity,
         weightGrams: Math.round(d.weightGrams * 1000) / 1000,
         ...chargesOf(d),
+        hasPhoto: prev?.hasPhoto,
         createdAt: prev?.createdAt ?? now,
         updatedAt: now,
       });
@@ -192,6 +201,7 @@ export const itemsRepo = {
         purity: r.purity,
         weightGrams: weight,
         ...chargesOf(r),
+        hasPhoto: prev?.hasPhoto,
         isDemo: r.isDemo === true || undefined,
         createdAt: prev?.createdAt ?? (typeof r.createdAt === 'string' ? r.createdAt : now),
         updatedAt: now,

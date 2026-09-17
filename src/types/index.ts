@@ -26,6 +26,8 @@ export interface Item extends ItemCharges {
   weightGrams: number;
   /** Seeded development data — removable from Settings. */
   isDemo?: boolean;
+  /** A photo is stored for this item (in IndexedDB, keyed by item id). */
+  hasPhoto?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,6 +69,7 @@ export interface ResolvedItem extends ItemCharges {
   source: ResolutionSource;
   /** Local database item, when one matched. */
   itemId?: string;
+  hasPhoto?: boolean;
 }
 
 export type Resolution =
@@ -112,4 +115,16 @@ export interface AppSettings {
    */
   marketAdjustmentPct: number;
   barcode: BarcodeSettings;
+  estimate: EstimateSettings;
+}
+
+/** Shop details and tax shown on printed estimates. */
+export interface EstimateSettings {
+  shopName: string;
+  address: string;
+  phone: string;
+  gstin: string;
+  /** GST % applied to the estimate subtotal. 0 hides the GST line. */
+  gstPct: number;
+  footerNote: string;
 }

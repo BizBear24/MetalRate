@@ -298,3 +298,36 @@
     transition-duration: 1ms !important;
   }
 }
+
+/* ── Printing (estimates) ───────────────────────────────────────────── */
+.print-portal {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  body::before {
+    display: none !important;
+  }
+  /* Print only the estimate document. */
+  body > *:not(.print-portal) {
+    display: none !important;
+  }
+  .print-portal {
+    display: block !important;
+  }
+  .estimate-paper {
+    width: 100% !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

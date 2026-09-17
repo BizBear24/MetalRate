@@ -11,6 +11,8 @@ import { FieldError, FieldLabel, Segmented } from '@/components/Form';
 import { ConfirmSheet } from '@/components/Sheet';
 import { useToast } from '@/components/Toast';
 import { ScanIcon, TrashIcon } from '@/components/Icons';
+import { PhotoField, type PhotoChange } from '@/features/items/PhotoField';
+import { photoStore } from '@/services/storage/photoStore';
 
 type Errors = Partial<Record<'barcode' | 'weight' | 'purity' | 'form' | ChargeField, string>>;
 
@@ -44,6 +46,8 @@ export function ItemFormPage({ id }: { id?: string }) {
     return init;
   });
   const [errors, setErrors] = useState<Errors>({});
+  const [photo, setPhoto] = useState<PhotoChange>({ kind: 'keep' });
+  const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -80,7 +84,7 @@ export function ItemFormPage({ id }: { id?: string }) {
       : { ok: true, weight: Math.round(w * 1000) / 1000, charges: parsedCharges };
   };
 
-  const submit = (ev: FormEvent) => {
+  const submit = async (ev: FormEvent) => {
     ev.preventDefault();
     const v = validate();
     if (!v.ok) {
@@ -89,8 +93,20 @@ export function ItemFormPage({ id }: { id?: string }) {
       if (first) document.getElementById(first)?.focus();
       return;
     }
+    setSaving(true);
     try {
       const saved = itemsRepo.save({ barcode, metal, purity, weightGrams: v.weight, name, ...v.charges }, id);
+      try {
+        if (photo.kind === 'set') {
+          await photoStore.put(saved.id, photo.blob);
+          itemsRepo.setHasPhoto(saved.id, true);
+        } else if (photo.kind === 'remove') {
+          await photoStore.remove(saved.id);
+          itemsRepo.setHasPhoto(saved.id, false);
+        }
+      } catch {
+        toast('Item saved, but the photo couldn’t be stored', 'error');
+      }
       toast(existing ? 'Item updated' : 'Item added successfully');
       // From a scan: show the valuation next. Otherwise return to wherever we came from.
       const showResult = params.get('then') === 'result' && !(existing && existing.barcode === saved.barcode);
@@ -98,6 +114,8 @@ export function ItemFormPage({ id }: { id?: string }) {
       else goBack('/items');
     } catch (err) {
       setErrors({ form: (err as Error).message });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -107,7 +125,7 @@ export function ItemFormPage({ id }: { id?: string }) {
     <Page>
       <PageHeader title={existing ? 'Edit Item' : 'Add Item'} eyebrow={existing?.isDemo ? 'Demo item' : 'Item details'} back backFallback="/items" />
 
-      <form onSubmit={submit} noValidate className="flex flex-1 flex-col gap-6">
+      <form onSubmit={(e) => void submit(e)} noValidate className="flex flex-1 flex-col gap-6">
         <div>
           <FieldLabel htmlFor="barcode">Barcode</FieldLabel>
           <div className="flex gap-2">
@@ -136,6 +154,11 @@ export function ItemFormPage({ id }: { id?: string }) {
             </button>
           </div>
           <FieldError id="barcode-err">{errors.barcode}</FieldError>
+        </div>
+
+        <div>
+          <FieldLabel hint="optional">Photo</FieldLabel>
+          <PhotoField itemId={existing?.id} hasPhoto={existing?.hasPhoto} value={photo} onChange={setPhoto} />
         </div>
 
         <div>
@@ -236,7 +259,7 @@ export function ItemFormPage({ id }: { id?: string }) {
         )}
 
         <div className="mt-auto flex flex-col gap-3 pt-2">
-          <Button type="submit" variant="gold" size="lg" block>
+          <Button type="submit" variant="gold" size="lg" block disabled={saving}>
             {existing ? 'Save Changes' : 'Save Item'}
           </Button>
           {existing && (

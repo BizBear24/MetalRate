@@ -45,9 +45,13 @@ function toMetalPrice(q: MarketQuote, fx: FxRate, fetchedAt: string): MetalPrice
   };
 }
 
+/** The reference rate is published once a day; re-fetching it every minute only risks rate limits. */
+const FX_REFETCH_MS = 60 * 60 * 1000;
+
 async function resolveFx(cached: FxRate | undefined, signal?: AbortSignal): Promise<FxRate> {
+  if (cached?.fetchedAt && Date.now() - Date.parse(cached.fetchedAt) < FX_REFETCH_MS) return cached;
   try {
-    return await getFxRate('USD', TARGET_CURRENCY, signal);
+    return { ...(await getFxRate('USD', TARGET_CURRENCY, signal)), fetchedAt: new Date().toISOString() };
   } catch (e) {
     // FX publishes once a day; a recent cached rate is still the current reference rate.
     if (cached && Date.now() - new Date(cached.timestamp).getTime() < FX_REUSE_MS) return cached;

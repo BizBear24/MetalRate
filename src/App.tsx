@@ -9,6 +9,7 @@ import { ResultPage } from '@/pages/ResultPage';
 import { ItemsPage } from '@/pages/ItemsPage';
 import { ItemFormPage } from '@/pages/ItemFormPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { EstimatePage } from '@/pages/EstimatePage';
 
 export function App() {
   const { path, params } = useRoute();
@@ -31,6 +32,7 @@ export function App() {
   else if (path === '/items/new') page = <ItemFormPage key={params.toString()} />;
   else if (editMatch) page = <ItemFormPage key={editMatch[1]} id={editMatch[1]} />;
   else if (path === '/settings') page = <SettingsPage />;
+  else if (path === '/estimate') page = <EstimatePage />;
   else page = <HomePage />;
 
   return (

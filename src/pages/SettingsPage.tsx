@@ -1,5 +1,6 @@
-import { useRef, useState, type ReactNode } from 'react';
-import type { AppSettings, BarcodeSettings, ThemePreference } from '@/types';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useRoute } from '@/lib/router';
+import type { AppSettings, BarcodeSettings, EstimateSettings, ThemePreference } from '@/types';
 import { useSettings } from '@/hooks/useSettings';
 import { useItems } from '@/hooks/useItems';
 import { usePriceState } from '@/features/pricing/usePrices';
@@ -28,6 +29,7 @@ const THEMES: { value: ThemePreference; label: string }[] = [
 
 export function SettingsPage() {
   const { settings, update } = useSettings();
+  const section = useRoute().params.get('section');
   const items = useItems();
   const prices = usePriceState();
   const now = useNow(10000);
@@ -38,6 +40,16 @@ export function SettingsPage() {
 
   const provider = getProvider(settings.priceProviderId);
   const demoCount = items.filter((i) => i.isDemo).length;
+
+  const setEstimate = (patch: Partial<EstimateSettings>) => update((s) => ({ ...s, estimate: { ...s.estimate, ...patch } }));
+
+  // Deep link: /settings?section=estimate
+  useEffect(() => {
+    if (!section) return;
+    // After the app's scroll-to-top on navigation.
+    const t = setTimeout(() => document.getElementById(section)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
+    return () => clearTimeout(t);
+  }, [section]);
 
   const setBarcode = (fn: (b: BarcodeSettings) => BarcodeSettings) =>
     update((s: AppSettings) => ({ ...s, barcode: fn(s.barcode) }));
@@ -96,7 +108,13 @@ export function SettingsPage() {
           label="Market adjustment"
           detail="Optional % added to the converted spot price, e.g. to reflect import duty. 0 = pure spot."
         >
-          <AdjustmentInput value={settings.marketAdjustmentPct} onChange={(n) => update((s) => ({ ...s, marketAdjustmentPct: n }))} />
+          <PercentInput
+            label="Market adjustment percent"
+            min={-20}
+            max={30}
+            value={settings.marketAdjustmentPct}
+            onChange={(n) => update((s) => ({ ...s, marketAdjustmentPct: n }))}
+          />
         </Row>
         <ActionRow
           icon={<RefreshIcon size={18} className={prices.loading ? 'animate-spin' : ''} />}
@@ -108,6 +126,41 @@ export function SettingsPage() {
       <Section title="Appearance">
         <div className="py-3">
           <Segmented label="Theme" size="sm" value={settings.theme} options={THEMES} onChange={(theme) => update((s) => ({ ...s, theme }))} />
+        </div>
+      </Section>
+
+      <Section title="Estimate" id="estimate">
+        <div className="space-y-3 py-4">
+          <p className="text-xs leading-relaxed text-muted">Printed at the top of every estimate.</p>
+          <TextSetting label="Shop name" value={settings.estimate.shopName} onChange={(shopName) => setEstimate({ shopName })} maxLength={60} />
+          <TextSetting
+            label="Address"
+            value={settings.estimate.address}
+            onChange={(address) => setEstimate({ address })}
+            multiline
+            maxLength={200}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <TextSetting label="Phone" value={settings.estimate.phone} onChange={(phone) => setEstimate({ phone })} maxLength={30} inputMode="tel" />
+            <TextSetting
+              label="GSTIN"
+              value={settings.estimate.gstin}
+              onChange={(gstin) => setEstimate({ gstin: gstin.toUpperCase() })}
+              maxLength={15}
+            />
+          </div>
+        </div>
+        <Row label="GST on estimate" detail="Applied to the estimate subtotal. Set 0 to leave GST out.">
+          <PercentInput value={settings.estimate.gstPct} min={0} max={28} onChange={(gstPct) => setEstimate({ gstPct })} label="GST percent" />
+        </Row>
+        <div className="py-4">
+          <TextSetting
+            label="Footer note"
+            value={settings.estimate.footerNote}
+            onChange={(footerNote) => setEstimate({ footerNote })}
+            multiline
+            maxLength={300}
+          />
         </div>
       </Section>
 
@@ -227,9 +280,53 @@ export function SettingsPage() {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function TextSetting({
+  label,
+  value,
+  onChange,
+  multiline,
+  maxLength,
+  inputMode,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  multiline?: boolean;
+  maxLength?: number;
+  inputMode?: 'tel' | 'text';
+}) {
+  const id = `set-${label.toLowerCase().replace(/\W+/g, '-')}`;
   return (
-    <section className="mb-7">
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-muted">
+        {label}
+      </label>
+      {multiline ? (
+        <textarea
+          id={id}
+          rows={2}
+          className="field h-auto resize-none py-2.5 text-sm leading-relaxed"
+          value={value}
+          maxLength={maxLength}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : (
+        <input
+          id={id}
+          className="field h-11 text-sm"
+          value={value}
+          maxLength={maxLength}
+          inputMode={inputMode}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
+function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
+  return (
+    <section className="mb-7 scroll-mt-6" id={id}>
       <h2 className="eyebrow mb-2 px-1">{title}</h2>
       <div className="divide-y divide-line rounded-2xl border border-line bg-surface/50 px-4">{children}</div>
     </section>
@@ -376,11 +473,23 @@ function CodeTester({ settings }: { settings: BarcodeSettings }) {
   );
 }
 
-function AdjustmentInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+function PercentInput({
+  value,
+  onChange,
+  min,
+  max,
+  label,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  min: number;
+  max: number;
+  label: string;
+}) {
   const [text, setText] = useState(String(value));
   const commit = () => {
     const n = Number(text.replace(',', '.'));
-    const valid = text.trim() !== '' && Number.isFinite(n) && n >= -20 && n <= 30;
+    const valid = text.trim() !== '' && Number.isFinite(n) && n >= min && n <= max;
     const next = valid ? Math.round(n * 100) / 100 : value;
     setText(String(next));
     if (next !== value) onChange(next);
@@ -389,7 +498,7 @@ function AdjustmentInput({ value, onChange }: { value: number; onChange: (n: num
     <div className="relative w-24">
       <input
         inputMode="decimal"
-        aria-label="Market adjustment percent"
+        aria-label={label}
         className="field num h-11 pr-8 text-right text-sm"
         value={text}
         onChange={(e) => setText(e.target.value.replace(/[^\d.,-]/g, ''))}

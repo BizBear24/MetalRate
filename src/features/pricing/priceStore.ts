@@ -16,10 +16,17 @@ export interface PriceState {
   silver: MetalState;
   fx?: FxRate;
   loading: boolean;
+  /** Last time a fetch was attempted / succeeded (ISO). */
   lastAttemptAt?: string;
+  lastSuccessAt?: string;
 }
 
-const POLL_MS = 60_000;
+/** Target refresh interval while the app is open. */
+export const POLL_MS = 60_000;
+/** Retry sooner after a failure. */
+const RETRY_MS = 15_000;
+/** How often the watchdog checks whether a refresh is overdue. */
+const WATCHDOG_MS = 5_000;
 
 type Listener = () => void;
 
@@ -34,18 +41,22 @@ function createPriceStore() {
   const listeners = new Set<Listener>();
   let provider: PriceProvider | null = null;
   let inflight: AbortController | null = null;
-  let timer: ReturnType<typeof setInterval> | undefined;
+  let watchdog: ReturnType<typeof setInterval> | undefined;
+  let lastAttempt = 0;
 
   const set = (patch: Partial<PriceState>) => {
     state = { ...state, ...patch };
     listeners.forEach((l) => l());
   };
 
+  const anyFailed = () => state.gold.failed || state.silver.failed;
+
   async function refresh(): Promise<void> {
     if (!provider) return;
     inflight?.abort();
     const ctrl = new AbortController();
     inflight = ctrl;
+    lastAttempt = Date.now();
     set({ loading: true });
 
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -55,6 +66,7 @@ function createPriceStore() {
         gold: { ...state.gold, failed: true, error: 'No internet connection' },
         silver: { ...state.silver, failed: true, error: 'No internet connection' },
       });
+      inflight = null;
       return;
     }
 
@@ -63,12 +75,16 @@ function createPriceStore() {
       if (ctrl.signal.aborted) return;
       const next = (prev: MetalState, v: MetalPrice | Error): MetalState =>
         v instanceof Error ? { ...prev, failed: true, error: v.message } : { price: v, failed: false, fromCache: false };
+      const now = new Date().toISOString();
+      const gold = next(state.gold, r.gold);
+      const silver = next(state.silver, r.silver);
       set({
-        gold: next(state.gold, r.gold),
-        silver: next(state.silver, r.silver),
+        gold,
+        silver,
         fx: r.fx ?? state.fx,
         loading: false,
-        lastAttemptAt: new Date().toISOString(),
+        lastAttemptAt: now,
+        lastSuccessAt: gold.failed && silver.failed ? state.lastSuccessAt : now,
       });
     } catch (e) {
       if (ctrl.signal.aborted) return;
@@ -84,24 +100,27 @@ function createPriceStore() {
     }
   }
 
-  function onVisibility() {
-    if (document.visibilityState === 'visible') {
-      void refresh();
-      startTimer();
-    } else {
-      stopTimer();
-    }
+  /** Refreshes when the last attempt is older than `maxAgeMs` (and nothing is in flight). */
+  function refreshIfStale(maxAgeMs = POLL_MS): void {
+    if (inflight || !provider) return;
+    if (Date.now() - lastAttempt >= maxAgeMs) void refresh();
   }
-  function startTimer() {
-    stopTimer();
-    timer = setInterval(() => void refresh(), POLL_MS);
-  }
-  function stopTimer() {
-    if (timer) clearInterval(timer);
-    timer = undefined;
-  }
+
+  // Background tabs and sleeping phones freeze timers, so a plain setInterval can leave
+  // an old price on screen. A short watchdog compares wall-clock time instead, and every
+  // "the user is back" signal triggers an immediate check.
+  const tick = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    refreshIfStale(anyFailed() ? RETRY_MS : POLL_MS);
+  };
+  const onReturn = () => {
+    if (document.visibilityState !== 'hidden') refreshIfStale(10_000);
+  };
   const onOnline = () => void refresh();
   const onOffline = () => void refresh();
+  const onInteract = () => refreshIfStale(POLL_MS);
+
+  const RETURN_EVENTS = ['visibilitychange', 'focus', 'pageshow', 'resume'] as const;
 
   return {
     getState: () => state,
@@ -110,20 +129,28 @@ function createPriceStore() {
       return () => listeners.delete(l);
     },
     refresh,
-    /** Starts polling with the given provider. Returns a cleanup function. */
+    refreshIfStale,
+    /** Starts auto-refresh with the given provider. Returns a cleanup function. */
     start(p: PriceProvider) {
       const changed = provider?.id !== p.id;
       provider = p;
       if (changed) void refresh();
-      startTimer();
-      document.addEventListener('visibilitychange', onVisibility);
+      clearInterval(watchdog);
+      watchdog = setInterval(tick, WATCHDOG_MS);
+      for (const ev of RETURN_EVENTS) {
+        (ev === 'visibilitychange' || ev === 'resume' ? document : window).addEventListener(ev, onReturn);
+      }
       window.addEventListener('online', onOnline);
       window.addEventListener('offline', onOffline);
+      window.addEventListener('pointerdown', onInteract, { passive: true });
       return () => {
-        stopTimer();
-        document.removeEventListener('visibilitychange', onVisibility);
+        clearInterval(watchdog);
+        for (const ev of RETURN_EVENTS) {
+          (ev === 'visibilitychange' || ev === 'resume' ? document : window).removeEventListener(ev, onReturn);
+        }
         window.removeEventListener('online', onOnline);
         window.removeEventListener('offline', onOffline);
+        window.removeEventListener('pointerdown', onInteract);
       };
     },
     price(metal: Metal): MetalPrice | undefined {

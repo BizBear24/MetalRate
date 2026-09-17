@@ -31,6 +31,7 @@ export function resolveBarcode(raw: string, settings: BarcodeSettings, db: ItemL
         weightGrams: parsed.weightGrams,
         source: 'encoded',
         itemId: saved?.id,
+        hasPhoto: saved?.hasPhoto,
       },
     };
   }
@@ -49,6 +50,7 @@ export function resolveBarcode(raw: string, settings: BarcodeSettings, db: ItemL
           weightGrams: parsed.weightGrams,
           source: 'weight-embedded',
           itemId: base.id,
+          hasPhoto: base.hasPhoto,
         },
       };
     }
@@ -72,6 +74,7 @@ export function resolveBarcode(raw: string, settings: BarcodeSettings, db: ItemL
         weightGrams: saved.weightGrams,
         source: 'database',
         itemId: saved.id,
+        hasPhoto: saved.hasPhoto,
       },
     };
   }

@@ -144,3 +144,23 @@ export const LockIcon = (p: P) => (
     <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
   </Base>
 );
+export const ImageIcon = (p: P) => (
+  <Base {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+    <circle cx="9" cy="10" r="1.6" />
+    <path d="m20.5 15.5-4.6-4.6a1 1 0 0 0-1.4 0L6.5 19" />
+  </Base>
+);
+export const PrinterIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M7 8V3.5h10V8M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    <rect x="7" y="13.5" width="10" height="7" rx="1" />
+    <path d="M17.5 11h.01" />
+  </Base>
+);
+export const ReceiptIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M6 3.5h12v17l-2.2-1.5-1.9 1.5-1.9-1.5-2 1.5-1.9-1.5L6 20.5z" />
+    <path d="M9 8.5h6M9 12h6M9 15.5h3.5" />
+  </Base>
+);

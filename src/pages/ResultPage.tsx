@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { usePhoto } from '@/hooks/usePhoto';
+import { priceStore } from '@/features/pricing/priceStore';
 import { useRoute, navigate, goBack } from '@/lib/router';
 import { useValuation } from '@/features/calculator/useValuation';
 import { formatPurity, metalLabel } from '@/features/calculator/purity';
@@ -10,7 +12,9 @@ import { Button, IconButton } from '@/components/Button';
 import { CountUp } from '@/components/CountUp';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useToast } from '@/components/Toast';
-import { CloseIcon, EditIcon, OfflineIcon, PlusIcon, RefreshIcon, ScanIcon, ShareIcon } from '@/components/Icons';
+import { CloseIcon, EditIcon, OfflineIcon, PlusIcon, ReceiptIcon, RefreshIcon, ScanIcon, ShareIcon } from '@/components/Icons';
+import { estimateStore } from '@/features/estimate/estimateStore';
+import { useEstimateDraft } from '@/features/estimate/useEstimateDraft';
 import type { ResolutionSource } from '@/types';
 
 const SOURCE_LABEL: Record<ResolutionSource, string> = {
@@ -25,6 +29,12 @@ export function ResultPage() {
   const { resolution, item, price, valuation, adjustmentPct } = useValuation(code);
   const now = useNow(5000);
   const toast = useToast();
+  const onEstimate = useEstimateDraft().codes.includes(code.trim());
+
+  // Never value an item against a price that hasn't been checked in the last 30 s.
+  useEffect(() => {
+    priceStore.refreshIfStale(30_000);
+  }, []);
 
   if (!item) {
     return (
@@ -102,6 +112,7 @@ export function ResultPage() {
 
       {/* Identity */}
       <section className="text-center">
+        {item.hasPhoto && item.itemId && <HeroPhoto itemId={item.itemId} alt={item.name || `${metal} item`} />}
         <div className="inline-flex items-center gap-2.5">
           <span className={`text-[0.72rem] font-bold tracking-[0.32em] uppercase ${item.metal === 'gold' ? 'gold-text' : 'text-ink/80'}`}>
             {metal}
@@ -176,6 +187,18 @@ export function ResultPage() {
         <Button variant="gold" size="xl" block icon={<ScanIcon />} onClick={() => navigate('/scan', { replace: true })}>
           Scan Another
         </Button>
+        <div className="grid grid-cols-2 gap-3">
+        <Button
+          block
+          icon={<ReceiptIcon size={18} />}
+          disabled={!valuation}
+          onClick={() => {
+            if (estimateStore.add(code)) toast('Added to estimate');
+            navigate('/estimate');
+          }}
+        >
+          {onEstimate ? 'View estimate' : 'Add to estimate'}
+        </Button>
         {item.itemId ? (
           <Button
             block
@@ -207,6 +230,7 @@ export function ResultPage() {
             Save Item
           </Button>
         )}
+        </div>
       </div>
     </Page>
   );
@@ -221,6 +245,39 @@ function Metric({ label, value, suffix, loading }: { label: string; value: strin
         {suffix && <span className="ml-0.5 text-sm font-normal text-muted">{suffix}</span>}
       </span>
     </div>
+  );
+}
+
+function HeroPhoto({ itemId, alt }: { itemId: string; alt: string }) {
+  const url = usePhoto(itemId);
+  const [zoom, setZoom] = useState(false);
+  if (!url) return <div className="mx-auto mb-5 size-36" aria-hidden="true" />;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setZoom(true)}
+        aria-label="View photo"
+        className="pressable animate-fade mx-auto mb-5 block size-36 cursor-zoom-in overflow-hidden rounded-[28px] border border-line-strong shadow-[0_20px_50px_-20px_var(--glow)]"
+      >
+        <img src={url} alt={alt} className="size-full object-cover" />
+      </button>
+      {zoom && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={alt}
+          onClick={() => setZoom(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setZoom(false)}
+          className="animate-fade fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/90 p-4"
+        >
+          <img src={url} alt={alt} className="max-h-full max-w-full rounded-2xl object-contain" />
+          <IconButton label="Close photo" className="!absolute top-[calc(env(safe-area-inset-top)+0.75rem)] right-3 !text-white" autoFocus>
+            <CloseIcon />
+          </IconButton>
+        </div>
+      )}
+    </>
   );
 }
 

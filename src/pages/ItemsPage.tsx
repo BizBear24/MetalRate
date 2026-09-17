@@ -12,6 +12,7 @@ import { ConfirmSheet } from '@/components/Sheet';
 import { useToast } from '@/components/Toast';
 import { EditIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon } from '@/components/Icons';
 import { InventoryImport } from '@/features/items/InventoryImport';
+import { ItemThumb } from '@/components/ItemThumb';
 
 const chargesTotal = (item: Item) => chargeLines(item).reduce((sum, c) => sum + c.amount, 0);
 
@@ -81,7 +82,7 @@ export function ItemsPage() {
                 className="pressable flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 py-4 text-left"
                 aria-label={`Value ${item.name || metalLabel(item.metal)}`}
               >
-                <MetalDot metal={item.metal} />
+                <ItemThumb itemId={item.id} hasPhoto={item.hasPhoto} metal={item.metal} size={44} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium text-ink">{item.name || `${metalLabel(item.metal)} item`}</span>
@@ -138,19 +139,6 @@ export function ItemsPage() {
         }}
       />
     </Page>
-  );
-}
-
-function MetalDot({ metal }: { metal: Item['metal'] }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`flex size-10 shrink-0 items-center justify-center rounded-full border text-[0.62rem] font-bold tracking-wider ${
-        metal === 'gold' ? 'border-gold/40 text-gold' : 'border-line-strong text-muted'
-      }`}
-    >
-      {metal === 'gold' ? 'Au' : 'Ag'}
-    </span>
   );
 }
 

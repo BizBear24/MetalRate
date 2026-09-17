@@ -10,6 +10,7 @@ import { Button } from '@/components/Button';
 import { CheckIcon, PlusIcon, ScanIcon } from '@/components/Icons';
 import { formatGrams } from '@/lib/format';
 import { metalLabel } from '@/features/calculator/purity';
+import { ItemThumb } from '@/components/ItemThumb';
 
 export function ScanPage() {
   const { settings } = useSettings();
@@ -82,10 +83,19 @@ export function ScanPage() {
 function FoundOverlay({ item }: { item: ResolvedItem }) {
   return (
     <div className="animate-fade absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/70 backdrop-blur-md" role="status">
+      {item.hasPhoto && item.itemId ? (
+        <div className="animate-found relative">
+          <ItemThumb itemId={item.itemId} hasPhoto metal={item.metal} size={120} className="border-[#d2b06a]/60 shadow-[0_0_60px_rgb(210_176_106/0.35)]" />
+          <span className="absolute -right-1 -bottom-1 flex size-10 items-center justify-center rounded-full bg-[#d2b06a] text-black">
+            <CheckIcon size={22} strokeWidth={2.2} />
+          </span>
+        </div>
+      ) : (
       <div className="animate-found relative flex size-24 items-center justify-center rounded-full border border-[#d2b06a]/50 shadow-[0_0_60px_rgb(210_176_106/0.35)]">
         <div className="absolute inset-2 rounded-full bg-[radial-gradient(circle,rgb(210_176_106/0.25),transparent_70%)]" />
         <CheckIcon size={40} strokeWidth={1.8} className="animate-draw text-[#f0dca8]" />
       </div>
+      )}
       <div className="mt-6 text-[0.72rem] font-semibold tracking-[0.3em] text-[#d2b06a] uppercase">Item Found</div>
       <div className="mt-2 font-display text-2xl text-white">
         {item.name || `${metalLabel(item.metal)} · ${item.purity}`}

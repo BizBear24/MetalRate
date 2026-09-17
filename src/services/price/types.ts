@@ -28,6 +28,8 @@ export interface FxRate {
   rate: number;
   timestamp: string;
   source: string;
+  /** When GoldCalc fetched it. */
+  fetchedAt?: string;
 }
 
 export interface FxProvider {

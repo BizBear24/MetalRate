@@ -1,20 +1,23 @@
 import type { ReactNode } from 'react';
 import { navigate, useRoute, goBack } from '@/lib/router';
-import { BackIcon, HomeIcon, ItemsIcon, SettingsIcon } from './Icons';
+import { BackIcon, HomeIcon, ItemsIcon, ReceiptIcon, SettingsIcon } from './Icons';
+import { useEstimateDraft } from '@/features/estimate/useEstimateDraft';
 import { IconButton } from './Button';
 
 const TABS = [
   { path: '/', label: 'Home', Icon: HomeIcon },
   { path: '/items', label: 'Items', Icon: ItemsIcon },
+  { path: '/estimate', label: 'Estimate', Icon: ReceiptIcon },
   { path: '/settings', label: 'Settings', Icon: SettingsIcon },
 ] as const;
 
 export function BottomNav() {
   const { path } = useRoute();
+  const estimateCount = useEstimateDraft().codes.length;
   return (
     <nav
       aria-label="Main"
-      className="glass fixed inset-x-0 bottom-0 z-40 border-t border-line pb-safe sm:bottom-4 sm:left-1/2 sm:w-[360px] sm:-translate-x-1/2 sm:rounded-full sm:border sm:pb-0"
+      className="glass fixed inset-x-0 bottom-0 z-40 border-t border-line pb-safe sm:bottom-4 sm:left-1/2 sm:w-[460px] sm:-translate-x-1/2 sm:rounded-full sm:border sm:pb-0"
     >
       <ul className="mx-auto flex h-16 max-w-md items-stretch justify-around px-4 sm:h-14">
         {TABS.map(({ path: p, label, Icon }) => {
@@ -31,6 +34,11 @@ export function BottomNav() {
               >
                 <Icon size={21} strokeWidth={active ? 1.8 : 1.5} />
                 {label}
+                {p === '/estimate' && estimateCount > 0 && (
+                  <span className="num absolute top-1.5 left-1/2 ml-2 min-w-[18px] rounded-full bg-gold px-1 text-center text-[0.62rem] leading-[18px] font-bold tracking-normal text-on-gold sm:static sm:ml-0">
+                    {estimateCount}
+                  </span>
+                )}
                 {active && <span className="absolute top-0 h-px w-8 bg-gold sm:hidden" />}
               </button>
             </li>
